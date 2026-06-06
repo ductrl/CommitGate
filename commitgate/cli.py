@@ -5,7 +5,13 @@ app = typer.Typer()
 
 @app.command()
 def scan():
-    print("CommitGate scanned!")
+    # TODO: Implement
+    print("[green]CommitGate scanned![/green]")
+
+@app.command()
+def install_hook():
+    # TODO: Implement
+    print("Installing Git hook...")
 
 @app.command()
 def version():
