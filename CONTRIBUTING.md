@@ -90,15 +90,14 @@ git commit -m "Implement staged diff retrieval (#3)"
 
 ## Project Structure
 
-commitgate/
-
-* cli.py
-* git_utils.py
-* gitleaks_runner.py
-* ai_reviewer.py
-* decision_engine.py
-* report_generator.py
-* splunk_logger.py
-* config.py
+commitgate/   
+├── cli.py    
+├── git_utils.py   
+├── gitleaks_runner.py   
+├── ai_reviewer.py   
+├── decision_engine.py   
+├── report_generator.py   
+├── splunk_logger.py   
+├── config.py  
 
 See `docs/architecture.md` for details.
