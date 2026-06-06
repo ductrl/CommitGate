@@ -1,0 +1,29 @@
+[project]
+name = "commitgate"
+version = "0.1.0"
+description = "AI-powered Git pre-commit security gate"
+readme = "README.md"
+requires-python = ">= 3.9"
+authors = [
+    {name = "Mike Ly", email = "mch3jy@virginia.edu"},
+    {name = "Phuong Hoang"}
+]
+
+dependencies = [
+    "typer",
+    "rich",
+    "requests",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[project.scripts]
+commitgate = "commitgate.cli:app"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
