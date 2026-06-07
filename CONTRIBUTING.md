@@ -76,18 +76,6 @@ git commit -m "Fix stuff"
 
 ---
 
-## GitHub Issues
-
-Every major task should be tracked by a GitHub Issue.
-
-Reference issues in commits when appropriate:
-
-```bash
-git commit -m "Implement staged diff retrieval (#3)"
-```
-
----
-
 ## Project Structure
 
 commitgate/   
