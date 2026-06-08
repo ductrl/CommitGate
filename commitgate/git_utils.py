@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 
 def get_staged_files() -> list[str]:
     """
@@ -41,3 +42,36 @@ def is_git_repo() -> bool:
     )
 
     return (res.returncode == 0 and res.stdout.strip() == "true")
+
+def install_pre_commit_hook() -> Path:
+    """
+    Install a Git pre-commit hook that runs CommitGate before each commit.
+
+    Returns the path to the installed hook.
+    """
+
+    if not is_git_repo():
+        raise RuntimeError("Not inside a Git repository.")
+    
+    hook_path = Path(".git/hooks/pre-commit")
+    
+    subprocess.run(
+        f"echo '#!/bin/sh' > {hook_path}",
+        shell=True,
+        check=True
+    )
+
+    subprocess.run(
+        f'echo \'commitgate scan\' >> {hook_path}',
+        shell=True,
+        check=True
+    )
+
+    # Add permission to execute
+    subprocess.run(
+        f"chmod +x {hook_path}",
+        shell=True,
+        check=True
+    )
+
+    return hook_path

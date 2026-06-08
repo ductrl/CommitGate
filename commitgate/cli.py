@@ -1,6 +1,8 @@
 import typer
 from rich import print
 
+from commitgate.git_utils import install_pre_commit_hook
+
 app = typer.Typer()
 
 @app.command()
@@ -10,8 +12,9 @@ def scan():
 
 @app.command()
 def install_hook():
-    # TODO: Implement
-    print("Installing Git hook...")
+    hook_path = install_pre_commit_hook()
+
+    print(f"Installed pre-commit hook at {hook_path}")
 
 @app.command()
 def version():
