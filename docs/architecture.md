@@ -1,18 +1,23 @@
-**CommitGate** is an AI-powered Git pre-commit security gate.
+This document provides a high-level overview of the project architecture. Detailed implementation behavior should be documented in code comments and docstrings.
 
 ## Module Descriptions
 
 #### cli.py
 
-- Typer entry point for the program
-- This is where user-facing commands will live
+User-facing command-line interface
+
+- `scan()` – Runs a CommitGate security scan.
+- `install_hook()` – Installs the Git pre-commit hook.
+- `version()` – Displays the current CommitGate version.
 
 #### git_utils.py
 
-- For Git-related operations 
-- Retrieve stage diffs
-- Retrieve staged files
-- Install Git hooks
+Git-related utility functions.
+
+- `get_staged_files()` – Returns a list of staged file paths.
+- `get_staged_diff()` – Returns the staged Git diff as a string.
+- `is_git_repo()` – Checks whether the current directory is inside a Git repository.
+- `install_pre_commit_hook()` – Creates a pre-commit hook that runs `commitgate scan`.
 
 #### gitleaks_runner.py
 
