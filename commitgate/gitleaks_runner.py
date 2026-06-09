@@ -76,7 +76,7 @@ def format_finding(finding: dict) -> str:
 
     return (
         f"\t- File: {finding.get('file')}\n" \
-        f"\t- Location: From line {finding.get('start_line')} to {finding.get('end_line')}\n" \
+        f"\t- Location: Line {finding.get('start_line')} to {finding.get('end_line')}\n" \
         f"\t- Rule: {finding.get('rule')}\n" \
         f"\t- Description: {finding.get('description')}"
     )
