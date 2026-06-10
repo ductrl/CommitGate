@@ -27,10 +27,10 @@ Git-related utility functions.
 
 #### ai_reviewer.py
 
-- Build AI prompts
-- Gather least-privilege context/code
-- Call LLM API
-- Parse findings
+- Build AI prompt
+- Call LLM API (DeepSeek; key from `DEEPSEEK_API_KEY`)
+- Parse findings into gitleaks-shaped dicts
+- Fail safe: return no findings on LLM error
 
 #### decision_engine.py
 
