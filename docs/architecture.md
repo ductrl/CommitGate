@@ -27,10 +27,14 @@ Git-related utility functions.
 
 #### ai_reviewer.py
 
-- Build AI prompt
-- Call LLM API (DeepSeek; key from `DEEPSEEK_API_KEY`)
-- Parse findings into gitleaks-shaped dicts
-- Fail safe: return no findings on LLM error
+Semantic (LLM) review of the staged diff. Findings are gitleaks-shaped dicts; key comes from `DEEPSEEK_API_KEY`. Fail-safe: any LLM error returns no findings (deterministic gate unaffected).
+
+- `review(diff, staged_files, ...)` – **Main entry for the CLI.** Runs the full AI review over a staged diff; always returns a list of finding dicts, never raises.
+- `review_staged()` – Convenience entry: pulls the staged diff/files from git and the API key from env, then calls `review()` with defaults.
+- `deepseek_api_key()` – Reads `DEEPSEEK_API_KEY` from the environment (loads `.env` if present).
+- `build_prompt(diff)` – Wraps the staged diff into the user prompt.
+- `call_llm(base_url, model, api_key, prompt, ...)` – Provider-agnostic call to an OpenAI-compatible `/chat/completions` endpoint; returns the raw response text.
+- `parse_findings(raw, staged_files)` – Validates the model response into finding dicts; drops findings for files not in the staged set.
 
 #### decision_engine.py
 
