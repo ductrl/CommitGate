@@ -34,20 +34,17 @@ from typing import List, Optional
 
 import requests
 
-# --- Provider 1: DeepSeek (active) ---
+# DeepSeek
 DEFAULT_BASE_URL = "https://api.deepseek.com"
-DEFAULT_MODEL = "deepseek-v4-flash"  # explicit V4-Flash id; legacy "deepseek-chat" retires 2026-07-24
-DEFAULT_TIMEOUT = 20              # hard cap (s) so a hung API never blocks a commit
-DEFAULT_MAX_TOKENS = 2048        # safety ceiling, NOT a target — the model stops when done.
-                                 # Generous so a many-finding response isn't truncated; if it
-                                 # ever is, parse_findings salvages the findings that completed.
-
-# Turn off V4's default thinking mode — too slow/costly for a per-commit hook, and the
-# reviewer only scans a small diff. DeepSeek-specific; other providers pass None.
+DEFAULT_MODEL = "deepseek-v4-flash"
+DEFAULT_TIMEOUT = 20       
+DEFAULT_MAX_TOKENS = 2048
+                                
+# Turn off V4's default thinking mode — too slow/costly for a per-commit hook
 DEEPSEEK_THINKING_DISABLED = {"thinking": {"type": "disabled"}}
 
 
-# --- Provider 2: Local LLM via Ollama (future — commented until built) ---
+# Local LLM via Ollama 
 # Ollama serves an OpenAI-compatible endpoint, so call_llm works unchanged; only these
 # defaults differ (no API key, no thinking toggle). Uncomment + verify the tag to enable.
 # LOCAL_BASE_URL = "http://localhost:11434/v1"
