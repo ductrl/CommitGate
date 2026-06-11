@@ -105,8 +105,11 @@ Until it's wired into `scan`, run it directly on your staged changes (needs the 
 git add <file>
 python -c "from commitgate.ai_reviewer import review_staged; print(review_staged())"
 ```
-It returns a list of finding dicts (`file`, `start_line`, `severity`, `description`, …), or
-`[]` if nothing is found or the API is unavailable (it fails safe — never blocks on an LLM error).
+It returns a tuple `(findings, ok)`: `findings` is a list of finding dicts (`file`, `start_line`,
+`severity`, `description`, …), and `ok` is a bool flagging whether the review actually completed.
+A clean pass is `([], True)`; a failed/unavailable review is `([], False)` — so the caller can tell
+"nothing found" from "couldn't review" and warn instead of assuming all-clear. It fails safe — an LLM
+error returns `([], False)`, never blocks.
 
 ## Running the tests
 
