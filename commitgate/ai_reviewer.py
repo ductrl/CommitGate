@@ -5,7 +5,7 @@ hardcoded internal hostnames/URLs, credentials that match no known pattern, risk
 `eval`/`exec`, `.env` values pasted into source, data-leaking logic. That semantic
 gap is CommitGate's actual differentiator.
 
-Pipeline: staged diff -> build_prompt -> call_llm -> parse_findings -> [finding dict].
+Pipeline: staged diff -> build_prompt -> call_llm -> parse_findings -> (findings, ok).
 
 Finding shape: a plain dict matching `gitleaks_runner`'s keys so `decision_engine`
 sees one structure from both scanners. Core keys (always present): `source`, `rule`,
@@ -19,8 +19,10 @@ Design notes:
   speaks the OpenAI-compatible `/chat/completions` API. DeepSeek is the default today;
   a local Ollama model drops in later by swapping the config triple (~90% reuse).
 - **Least-privilege:** we send only the staged diff, never the whole repo.
-- **Fail-safe:** any LLM error/timeout -> warn + return `[]`. The deterministic gitleaks
-  gate is the floor; the AI only ever *adds* findings and must never crash a commit on its own.
+- **Fail-safe:** any LLM error/timeout -> warn + return `([], False)`. The `ok` flag lets the
+  caller fail closed (warn) instead of mistaking a blind review for a clean one. The
+  deterministic gitleaks gate is the floor; the AI only ever *adds* findings and never
+  crashes a commit on its own.
 - **API key from env only:** `DEEPSEEK_API_KEY`, never config/source.
 """
 
@@ -30,7 +32,7 @@ import json
 import os
 import re
 import sys
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import requests
 
@@ -185,21 +187,27 @@ def _salvage_objects(text: str) -> list:
     return objects
 
 
-def parse_findings(raw: str, staged_files: List[str]) -> List[dict]:
-    """Turn a raw model response into validated finding dicts.
+def parse_findings(raw: str, staged_files: List[str]) -> Tuple[List[dict], bool]:
+    """Turn a raw model response into validated finding dicts plus a parse-ok flag.
 
-    Output matches `gitleaks_runner`'s dict keys so `decision_engine` sees one shape
-    from both scanners (see module docstring for the key contract). On malformed
-    output, returns `[]` (the caller warns) — never raises. Drops hallucinated entries
-    whose `file` is not in the staged set.
+    Returns `(findings, parse_ok)`. `parse_ok` answers "did we get a usable response?" —
+    True whenever the JSON parsed, *including* a clean empty `[]` or a response whose
+    findings were all dropped as hallucinated; False only when nothing parseable could be
+    recovered. This lets the caller tell a clean review (`[], True`) from a blind one
+    (`[], False`) and warn accordingly. Never raises. Output matches `gitleaks_runner`'s
+    dict keys so `decision_engine` sees one shape from both scanners (see module docstring).
+    Drops hallucinated entries whose `file` is not in the staged set.
     """
     data = _extract_json(raw)
     if isinstance(data, dict):
         items = data.get("findings", [])
+        parse_ok = True
     elif isinstance(data, list):
         items = data
+        parse_ok = True
     else:
         items = _salvage_objects(raw)   # response likely truncated — recover what completed
+        parse_ok = bool(items)          # salvaged something = partial success; nothing = unparseable
 
     staged = set(staged_files)
     findings: List[dict] = []
@@ -241,7 +249,7 @@ def parse_findings(raw: str, staged_files: List[str]) -> List[dict]:
             finding["suggestion"] = str(suggestion)
 
         findings.append(finding)
-    return findings
+    return findings, parse_ok
 
 
 def review(
@@ -254,14 +262,18 @@ def review(
     timeout: int = DEFAULT_TIMEOUT,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     extra_body: Optional[dict] = DEEPSEEK_THINKING_DISABLED,
-) -> List[dict]:
-    """Run the AI review over a staged diff. Always returns a list, never raises.
+) -> Tuple[List[dict], bool]:
+    """Run the AI review over a staged diff. Returns `(findings, ok)`, never raises.
 
-    Fail-safe: on any LLM error/timeout we warn to stderr and return `[]` so the
-    deterministic gate decides alone.
+    `ok` reports whether the AI layer actually completed a review, so the caller can fail
+    closed: an empty diff or a clean pass is `([], True)` (nothing to warn about), but a
+    dead/timed-out call or an unparseable response is `(..., False)` — the decision engine
+    should then warn rather than treat "no findings" as all-clear. Fail-safe: any LLM
+    error/timeout warns to stderr and returns `([], False)` so the deterministic gate
+    still decides alone.
     """
     if not diff or not diff.strip():
-        return []
+        return [], True   # nothing to review is not a failure
     prompt = build_prompt(diff)
     try:
         raw = call_llm(base_url, model, api_key, prompt, timeout, max_tokens, extra_body)
@@ -270,14 +282,15 @@ def review(
             f"[commitgate] AI review skipped ({exc}); deterministic gate unaffected.",
             file=sys.stderr,
         )
-        return []
+        return [], False
     return parse_findings(raw, staged_files)
 
 
-def review_staged(*, timeout: int = DEFAULT_TIMEOUT) -> List[dict]:
+def review_staged(*, timeout: int = DEFAULT_TIMEOUT) -> Tuple[List[dict], bool]:
     """Convenience entry: pull the staged diff/files from git and the key from env,
-    then review with DeepSeek defaults. For manual runs/demos; the real CLI wiring
-    lives in the orchestration once decision_engine lands."""
+    then review with DeepSeek defaults. Returns `(findings, ok)` like `review`. For
+    manual runs/demos; the real CLI wiring lives in the orchestration once
+    decision_engine lands."""
     from commitgate.git_utils import get_staged_diff, get_staged_files
 
     return review(

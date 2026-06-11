@@ -47,8 +47,9 @@ def test_review_happy_path_parses_findings():
         }
     ])
     with _llm_returning(content):
-        findings = review("some diff", STAGED, api_key="k")
+        findings, ok = review("some diff", STAGED, api_key="k")
 
+    assert ok is True
     assert len(findings) == 1
     f = findings[0]
     assert isinstance(f, dict)
@@ -62,25 +63,39 @@ def test_review_happy_path_parses_findings():
 
 def test_parse_strips_code_fences():
     raw = '```json\n[{"file": "app/db.py", "severity": "low", "rule": "r", "description": "m"}]\n```'
-    findings = parse_findings(raw, STAGED)
+    findings, ok = parse_findings(raw, STAGED)
+    assert ok is True
     assert len(findings) == 1
     assert findings[0]["file"] == "app/db.py"
 
 
-def test_parse_malformed_json_returns_empty():
-    assert parse_findings("the model rambled, no json here", STAGED) == []
+def test_parse_malformed_json_is_not_ok():
+    # garbage in -> empty findings AND parse_ok False (the caller should warn, not relax)
+    findings, ok = parse_findings("the model rambled, no json here", STAGED)
+    assert findings == []
+    assert ok is False
+
+
+def test_parse_clean_empty_array_is_ok():
+    # a genuine clean review -> empty findings but parse_ok True (do NOT warn)
+    findings, ok = parse_findings("[]", STAGED)
+    assert findings == []
+    assert ok is True
 
 
 def test_parse_drops_non_staged_file():
+    # JSON parsed fine; the finding was just hallucinated -> dropped, but still parse_ok True
     raw = json.dumps([{"file": "not/staged.py", "severity": "high", "rule": "r", "description": "m"}])
-    assert parse_findings(raw, STAGED) == []
+    findings, ok = parse_findings(raw, STAGED)
+    assert findings == []
+    assert ok is True
 
 
 def test_parse_normalizes_bad_severity_and_line():
     raw = json.dumps([
         {"file": "app/db.py", "severity": "spicy", "start_line": "x", "rule": "r", "description": "m"}
     ])
-    findings = parse_findings(raw, STAGED)
+    findings, _ = parse_findings(raw, STAGED)
     assert findings[0]["severity"] == "medium"   # unknown severity -> medium
     assert findings[0]["start_line"] is None      # non-numeric line -> None
 
@@ -97,7 +112,8 @@ def test_parse_extracts_rich_fields():
         "description": "os.system on user input",
         "suggestion": "Use subprocess with a list of args.",
     }])
-    f = parse_findings(raw, STAGED)[0]
+    findings, _ = parse_findings(raw, STAGED)
+    f = findings[0]
     assert f["category"] == "injection"
     assert f["confidence"] == "high"          # normalized to lowercase
     assert f["end_line"] == 6
@@ -112,7 +128,8 @@ def test_parse_salvages_truncated_array():
         '{"file": "app/config.py", "severity": "low", "rule": "r2", "description": "m2"}, '
         '{"file": "app/db.py", "severity": "crit'
     )
-    findings = parse_findings(raw, STAGED)
+    findings, ok = parse_findings(raw, STAGED)
+    assert ok is True                              # salvaged the complete objects
     assert [f["rule"] for f in findings] == ["r1", "r2"]
 
 
@@ -121,14 +138,16 @@ def test_parse_omits_unknown_confidence():
         "file": "app/db.py", "severity": "low", "rule": "r", "description": "m",
         "confidence": "pretty sure",
     }])
+    findings, _ = parse_findings(raw, STAGED)
     # unknown confidence is dropped entirely — the optional key is simply absent
-    assert "confidence" not in parse_findings(raw, STAGED)[0]
+    assert "confidence" not in findings[0]
 
 
 def test_parse_omits_absent_optional_fields():
     # a minimal finding carries only the core keys, no empty optionals
     raw = json.dumps([{"file": "app/db.py", "severity": "low", "rule": "r", "description": "m"}])
-    f = parse_findings(raw, STAGED)[0]
+    findings, _ = parse_findings(raw, STAGED)
+    f = findings[0]
     assert set(f) == {"source", "rule", "severity", "file", "start_line", "end_line", "description"}
 
 
@@ -136,7 +155,8 @@ def test_parse_accepts_object_with_findings_key():
     raw = json.dumps({"findings": [
         {"file": "app/db.py", "severity": "critical", "rule": "r", "description": "m"}
     ]})
-    findings = parse_findings(raw, STAGED)
+    findings, ok = parse_findings(raw, STAGED)
+    assert ok is True
     assert len(findings) == 1 and findings[0]["severity"] == "critical"
 
 
@@ -144,19 +164,24 @@ def test_parse_accepts_object_with_findings_key():
 
 def test_review_fail_safe_on_timeout(capsys):
     with patch.object(ai_reviewer.requests, "post", side_effect=requests.exceptions.Timeout):
-        findings = review("some diff", STAGED, api_key="k")
+        findings, ok = review("some diff", STAGED, api_key="k")
     assert findings == []                      # never raises
+    assert ok is False                         # a dead call is NOT a clean pass
     assert "AI review skipped" in capsys.readouterr().err
 
 def test_review_fail_safe_on_http_error():
     with patch.object(ai_reviewer.requests, "post",
                       return_value=FakeResponse("nope", ok=False, status_code=500)):
-        assert review("some diff", STAGED, api_key="k") == []
+        findings, ok = review("some diff", STAGED, api_key="k")
+    assert findings == []
+    assert ok is False
 
 
 def test_review_empty_diff_skips_llm():
     with patch.object(ai_reviewer.requests, "post") as post:
-        assert review("   ", STAGED, api_key="k") == []
+        findings, ok = review("   ", STAGED, api_key="k")
+        assert findings == []
+        assert ok is True                      # nothing to review is not a failure
         post.assert_not_called()
 
 
