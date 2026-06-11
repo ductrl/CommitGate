@@ -81,11 +81,6 @@ commitgate install-hook
 ```
 This writes `.git/hooks/pre-commit` so `commitgate scan` runs automatically on every commit.
 
-> ⚠️ **Known issue — not cross-platform yet.** `install_pre_commit_hook()` shells out to Unix
-> commands (`echo`, `chmod`). On **Windows it fails** (verified: `chmod` errors with exit 1, and
-> the hook file is written with literal quotes). The **macOS/Linux path is untested.** Until this
-> is fixed, run `commitgate scan` manually instead of relying on the hook.
-
 ## Usage
 
 ```bash
@@ -122,7 +117,7 @@ pytest -q
 | Module | Role | Status |
 |--------|------|--------|
 | `cli.py` | Typer commands: `scan`, `install-hook`, `version` | working |
-| `git_utils.py` | Staged files/diff, is-git-repo, hook install | staged files/diff working; **hook install fails on Windows, untested on Unix** |
+| `git_utils.py` | Staged files/diff, is-git-repo, hook install | working |
 | `gitleaks_runner.py` | Run gitleaks, parse findings | working |
 | `ai_reviewer.py` | LLM semantic review (DeepSeek), finding dicts | working (standalone) |
 | `decision_engine.py` | Merge findings → allow/warn/block | not built |
