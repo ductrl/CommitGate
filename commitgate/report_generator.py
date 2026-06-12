@@ -1,12 +1,20 @@
-def severity_color(severity: str):
+from typing import List
+
+SEVERITY_RANK: dict[str, int] = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+
+
+def severity_color(severity: str) -> str:
     severity = severity.lower()
 
-    if severity in ("critical", "high"):
+    if severity == "critical":
         return "red"
+    elif severity == "high":
+        return "orange1"
     elif severity == "medium":
         return "yellow"
     else:
         return "white"
+
 
 def format_finding(finding: dict, include_suggestion: bool = False) -> str:
     """
@@ -26,3 +34,20 @@ def format_finding(finding: dict, include_suggestion: bool = False) -> str:
         output += f"\n\t- Suggestion: {finding.get('suggestion')}"
 
     return output
+
+
+def remove_dup(findings: List[dict]) -> List[dict]:
+    """Remove duplicate findings and sort from lowest to highest severity.
+
+    Two findings are duplicates when they share the same (file, start_line).
+    When gitleaks and AI flag the same location, gitleaks wins.
+    """
+    seen: dict[tuple, dict] = {}
+    for finding in findings:
+        key = (finding.get("file"), finding.get("start_line"))
+        if key not in seen or finding.get("source") == "gitleaks":
+            seen[key] = finding
+
+    result = list(seen.values())
+    result.sort(key=lambda f: SEVERITY_RANK.get(f.get("severity", "low"), 0))
+    return result
