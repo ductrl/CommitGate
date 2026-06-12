@@ -72,20 +72,6 @@ def parse_gitleaks_findings(report_path: str | Path) -> list[dict]:
     
     return findings
 
-def format_finding(finding: dict) -> str:
-    """
-    Parse the finding into a readable rich format so that it can be printed by the CLI.
-    """
-
-    return (
-        f"\t- Source: {finding.get('source')}\n"
-        f"\t- Category: {finding.get('category')}\n"
-        f"\t- Severity: {finding.get('severity')}\n"
-        f"\t- File: {finding.get('file')}\n"
-        f"\t- Location: Line {finding.get('start_line')} to {finding.get('end_line')}\n"
-        f"\t- Description: {finding.get('description')}"
-    )
-
 def run_gitleaks_scan() -> list[dict]:
     """
     Scan staged files with Gitleaks.

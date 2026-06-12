@@ -2,7 +2,8 @@ import typer
 from rich import print
 
 from commitgate.git_utils import install_pre_commit_hook
-from commitgate.gitleaks_runner import run_gitleaks_scan, format_finding
+from commitgate.gitleaks_runner import run_gitleaks_scan
+from commitgate.report_generator import format_finding, severity_color
 from commitgate.ai_reviewer import review_staged
 
 app = typer.Typer()
@@ -41,8 +42,25 @@ def scan(
     print(f"[red]CommitGate detected {len(all_findings)} security finding(s):[/red]")
 
     for index, finding in enumerate(all_findings):
-        print(f"[yellow]Secret #{index + 1}[/yellow]")
-        print(format_finding(finding=finding))
+        # Formatting color based on severity
+        severity = finding.get("severity", "").lower()
+        color = severity_color(severity=severity)
+
+        # Printing finding
+
+        print(
+            f"[{color}]"
+            f"[{severity.upper()}] Finding #{index + 1}"
+            f"[/{color}]"
+        )
+        finding_output: str
+        
+        if finding.get("suggestion"):
+            finding_output = format_finding(finding=finding, include_suggestion=True)
+        else:
+            finding_output = format_finding(finding=finding)
+
+        print(f"[{color}]{finding_output}[/{color}]")
         print()
 
     print("[red]Commit blocked by CommitGate.[/red]")
