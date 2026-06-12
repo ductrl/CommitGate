@@ -3,24 +3,37 @@ from rich import print
 
 from commitgate.git_utils import install_pre_commit_hook
 from commitgate.gitleaks_runner import run_gitleaks_scan, format_finding
+from commitgate.ai_reviewer import review_staged
 
 app = typer.Typer()
 
 @app.command()
 def scan():
-    # TODO: Implement
+    # TODO: Move format_finding to report_generator
+    # TODO: Maybe also change the finding color based on severity
     gitleaks_findings = run_gitleaks_scan()
 
-    if not gitleaks_findings:
-        print("[green]No Gitleaks leaked secrets found.[/green]")
+    ai_findings, ai_review_ok = review_staged()
+
+    all_findings = gitleaks_findings + ai_findings
+
+    # AI review failed
+    if not ai_review_ok:
+        print("[yellow]AI review failed or returned an unusable response.[/yellow]")
+        print("[yellow]Continuing with deterministic checks only.[/yellow]")
+
+    # No secrets and vulnerabilities found
+    if not all_findings:
+        print("[green]No security findings found![/green]")
         print("[green]CommitGate scan completed![/green]")
         raise typer.Exit(code=0)
 
-    print(f"[red]Gitleaks detected {len(gitleaks_findings)} secret(s):[/red]")
+    print(f"[red]CommitGate detected {len(all_findings)} security finding(s):[/red]")
 
-    for index, finding in enumerate(gitleaks_findings):
+    for index, finding in enumerate(all_findings):
         print(f"[yellow]Secret #{index + 1}[/yellow]")
         print(format_finding(finding=finding))
+        print()
 
     print("[red]Commit blocked by CommitGate.[/red]")
     raise typer.Exit(code=1)
