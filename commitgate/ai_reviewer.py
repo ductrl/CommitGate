@@ -147,7 +147,12 @@ def call_llm(
         for raw_line in res.iter_lines():
             if time.monotonic() > deadline:
                 break
-            line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+            # line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+            if isinstance(raw_line, bytes):
+                line = raw_line.decode("utf-8")
+            else:
+                line = str(raw_line)
+                
             if not line.startswith("data: "):
                 continue
             data = line[6:]
