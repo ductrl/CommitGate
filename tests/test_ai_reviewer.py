@@ -61,7 +61,7 @@ def test_review_happy_path_parses_findings():
     assert len(findings) == 1
     f = findings[0]
     assert isinstance(f, dict)
-    assert f["source"] == "ai"
+    assert f["source"] == "AI Review"
     assert f["severity"] == "high"          # normalized to lowercase
     assert f["file"] == "app/config.py"
     assert f["start_line"] == 12

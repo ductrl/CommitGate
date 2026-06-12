@@ -262,7 +262,7 @@ def parse_findings(raw: str, staged_files: List[str]) -> Tuple[List[dict], bool]
 
         # core keys — always present, mirroring gitleaks_runner's dict
         finding: dict = {
-            "source": "ai",
+            "source": "AI Review",
             "rule": str(item.get("rule") or item.get("category") or "ai-finding"),
             "severity": severity,
             "file": file,
