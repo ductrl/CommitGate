@@ -57,6 +57,9 @@ def parse_gitleaks_findings(report_path: str | Path) -> list[dict]:
     for item in raw_findings:
         findings.append(
             {
+                "source": "gitleaks",
+                "category": "Secret leak",
+                "severity": "critical",
                 "description": item.get("Description"),
                 "start_line": item.get("StartLine"),
                 "end_line": item.get("EndLine"),
