@@ -19,6 +19,7 @@ def scan(
     # TODO: Move format_finding to report_generator
     # TODO: We can think about adding a configuration files for user next (to set things like timeout)
     # TODO: Maybe also change the finding color based on severity
+    # TODO: Add a skip option to commit without having CommitGate scan it
 
     gitleaks_findings = run_gitleaks_scan()
 
