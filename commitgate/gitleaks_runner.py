@@ -57,6 +57,9 @@ def parse_gitleaks_findings(report_path: str | Path) -> list[dict]:
     for item in raw_findings:
         findings.append(
             {
+                "source": "gitleaks",
+                "category": "Secret leak",
+                "severity": "critical",
                 "description": item.get("Description"),
                 "start_line": item.get("StartLine"),
                 "end_line": item.get("EndLine"),
@@ -105,8 +108,8 @@ def run_gitleaks_scan() -> list[dict]:
 
         # for each file to be scanned, we create a temporary JSON report file for gitleaks
         # and then parse that result
-        with tempfile.NamedTemporaryFile(mode="w+t", suffix=".json", delete=True) as report_file:
-            report_path = report_file.name
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = Path(tmpdir) / "gitleaks-report.json"
         
             command = [
                 "gitleaks",
@@ -117,7 +120,7 @@ def run_gitleaks_scan() -> list[dict]:
                 "--no-banner",
                 "--redact",
                 "--report-path",
-                report_path
+                str(report_path)
             ]
 
             result = subprocess.run(
