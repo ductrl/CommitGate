@@ -64,7 +64,7 @@ A separate regex+entropy secret-scanner (gitleaks) ALREADY catches standard secr
 Be thorough and specific in `description` and `suggestion`.
 
 Respond with ONLY a JSON array (no prose, no code fences). Each element:
-{"rule": str, "category": str, "severity": "low"|"medium"|"high"|"critical", "confidence": "low"|"medium"|"high", "file": str, "start_line": int|null, "end_line": int|null, "secret": str|null, "description": str, "suggestion": str}
+{"rule": str, "category": str (sentence case, e.g. "Secret leak", "Hardcoded url", "Injection risk"), "severity": "low"|"medium"|"high"|"critical", "confidence": "low"|"medium"|"high", "file": str, "start_line": int|null, "end_line": int|null, "secret": str|null, "description": str, "suggestion": str}
 
 The "file" must be a path that appears in the diff. If you find nothing, return [].
 """
@@ -238,7 +238,7 @@ def parse_findings(raw: str, staged_files: List[str]) -> Tuple[List[dict], bool]
             finding["secret"] = secret
         category = item.get("category")
         if category:
-            finding["category"] = str(category)
+            finding["category"] = str(category).replace("-", " ").capitalize()
         confidence = item.get("confidence")
         if confidence is not None:
             confidence = str(confidence).lower()
