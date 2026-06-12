@@ -8,12 +8,21 @@ from commitgate.ai_reviewer import review_staged
 app = typer.Typer()
 
 @app.command()
-def scan():
+def scan(
+    timeout: int = typer.Option(
+        20,
+        "--timeout",
+        "-t",
+        help="Maximum time (seconds) allowed for AI review.",
+    )
+):
     # TODO: Move format_finding to report_generator
+    # TODO: We can think about adding a configuration files for user next (to set things like timeout)
     # TODO: Maybe also change the finding color based on severity
+
     gitleaks_findings = run_gitleaks_scan()
 
-    ai_findings, ai_review_ok = review_staged()
+    ai_findings, ai_review_ok = review_staged(timeout=timeout)
 
     all_findings = gitleaks_findings + ai_findings
 
