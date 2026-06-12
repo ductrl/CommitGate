@@ -105,8 +105,8 @@ def run_gitleaks_scan() -> list[dict]:
 
         # for each file to be scanned, we create a temporary JSON report file for gitleaks
         # and then parse that result
-        with tempfile.NamedTemporaryFile(mode="w+t", suffix=".json", delete=True) as report_file:
-            report_path = report_file.name
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = Path(tmpdir) / "gitleaks-report.json"
         
             command = [
                 "gitleaks",
@@ -117,7 +117,7 @@ def run_gitleaks_scan() -> list[dict]:
                 "--no-banner",
                 "--redact",
                 "--report-path",
-                report_path
+                str(report_path)
             ]
 
             result = subprocess.run(
