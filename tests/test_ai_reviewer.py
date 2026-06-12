@@ -24,8 +24,16 @@ class FakeResponse:
         self.status_code = status_code
         self.text = content if isinstance(content, str) else json.dumps(content)
 
-    def json(self):
-        return {"choices": [{"message": {"content": self._content}}]}
+    def iter_lines(self):
+        chunk = json.dumps({"choices": [{"delta": {"content": self._content}, "index": 0}]})
+        yield f"data: {chunk}"
+        yield "data: [DONE]"
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
 
 
 def _llm_returning(content):
@@ -114,7 +122,7 @@ def test_parse_extracts_rich_fields():
     }])
     findings, _ = parse_findings(raw, STAGED)
     f = findings[0]
-    assert f["category"] == "injection"
+    assert f["category"] == "Injection"        # normalized to sentence case
     assert f["confidence"] == "high"          # normalized to lowercase
     assert f["end_line"] == 6
     assert f["suggestion"].startswith("Use subprocess")
@@ -131,6 +139,16 @@ def test_parse_salvages_truncated_array():
     findings, ok = parse_findings(raw, STAGED)
     assert ok is True                              # salvaged the complete objects
     assert [f["rule"] for f in findings] == ["r1", "r2"]
+
+
+def test_parse_normalizes_category_to_sentence_case():
+    raw = json.dumps([
+        {"file": "app/db.py", "severity": "high", "rule": "r", "description": "m", "category": "secret-leak"},
+        {"file": "app/config.py", "severity": "high", "rule": "r", "description": "m", "category": "Hardcoded-URL"},
+    ])
+    findings, _ = parse_findings(raw, STAGED)
+    assert findings[0]["category"] == "Secret leak"
+    assert findings[1]["category"] == "Hardcoded url"
 
 
 def test_parse_omits_unknown_confidence():
@@ -190,7 +208,7 @@ def test_review_empty_diff_skips_llm():
 def test_review_targets_v4_flash_with_thinking_disabled():
     captured = {}
 
-    def fake_post(url, headers=None, json=None, timeout=None):
+    def fake_post(url, headers=None, json=None, **kwargs):
         captured["json"] = json
         return FakeResponse("[]")
 
@@ -199,12 +217,13 @@ def test_review_targets_v4_flash_with_thinking_disabled():
 
     assert captured["json"]["model"] == "deepseek-v4-flash"
     assert captured["json"]["thinking"] == {"type": "disabled"}
+    assert captured["json"]["stream"] is True
 
 
 def test_call_llm_hits_chat_completions_with_bearer():
     captured = {}
 
-    def fake_post(url, headers=None, json=None, timeout=None):
+    def fake_post(url, headers=None, json=None, **kwargs):
         captured["url"] = url
         captured["headers"] = headers
         captured["json"] = json

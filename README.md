@@ -61,18 +61,31 @@ pip install -e ".[dev]"
 ```
 This installs the `commitgate` command plus all dependencies.
 
-### 4. Configure the AI reviewer key (optional)
+### 4. Configure the AI reviewer (optional)
 
-The AI reviewer reads its key from a local `.env` file (never committed).
+The AI reviewer reads settings from a local `.env` file (never committed).
 
 ```bash
 cp .env.example .env          # Windows: Copy-Item .env.example .env
 ```
-Then open `.env` and replace the placeholder with your real DeepSeek key:
+
+Open `.env` and set your values:
+
 ```
+# Required: your DeepSeek API key (get one at platform.deepseek.com)
 DEEPSEEK_API_KEY=sk-your-real-key
+
+# Optional: how long the AI reviewer is allowed to run per commit, in seconds.
+# Default is 20. Lower values mean less waiting; the reviewer collects as many
+# findings as it can before the budget runs out and then stops cleanly.
+COMMITGATE_AI_TIMEOUT=20
 ```
-`.env` is gitignored — your key never enters source or git history.
+
+`.env` is gitignored — your key and settings never enter source or git history.
+
+> **Future:** once the config module lands, these settings will move to a
+> `.commitgate.yml` file in your repo root. The `.env` vars will remain as
+> an override for CI / per-machine customisation.
 
 ### 5. Install the Git hook
 

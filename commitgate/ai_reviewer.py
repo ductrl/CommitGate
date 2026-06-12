@@ -32,6 +32,7 @@ import json
 import os
 import re
 import sys
+import time
 from typing import List, Optional, Tuple
 
 import requests
@@ -39,8 +40,9 @@ import requests
 # DeepSeek
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-v4-flash"
-DEFAULT_TIMEOUT = 20       
+DEFAULT_TIMEOUT = 20        # seconds; override with COMMITGATE_AI_TIMEOUT env var
 DEFAULT_MAX_TOKENS = 2048
+CONNECT_TIMEOUT = 5         # separate connect timeout — fail fast if network is down
                                 
 # Turn off V4's default thinking mode — too slow/costly for a per-commit hook
 DEEPSEEK_THINKING_DISABLED = {"thinking": {"type": "disabled"}}
@@ -81,6 +83,23 @@ def deepseek_api_key() -> Optional[str]:
     return os.environ.get("DEEPSEEK_API_KEY")
 
 
+def _ai_timeout() -> int:
+    """Return the configured AI timeout. Set COMMITGATE_AI_TIMEOUT (seconds) to override.
+    Loads .env so the setting works the same way as DEEPSEEK_API_KEY."""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+    val = os.environ.get("COMMITGATE_AI_TIMEOUT")
+    if val:
+        try:
+            return max(1, int(val))
+        except ValueError:
+            pass
+    return DEFAULT_TIMEOUT
+
+
 def build_prompt(diff: str) -> str:
     """Wrap the staged diff into the user prompt (least-privilege: diff only)."""
     return f"Review this staged diff:\n\n```diff\n{diff}\n```"
@@ -97,14 +116,16 @@ def call_llm(
 ) -> str:
     """Single provider-agnostic call to an OpenAI-compatible /chat/completions endpoint.
 
-    Returns the assistant message content. Raises on HTTP error / timeout — the caller
-    (`review`) is responsible for the fail-safe.
+    Streams the response and accumulates chunks until [DONE] or the time budget expires.
+    Stopping early (budget exhausted) returns whatever arrived — `_salvage_objects` in
+    `parse_findings` recovers complete findings from a partial array. Raises on HTTP error
+    or connection failure; the caller (`review`) handles the fail-safe.
     """
     url = f"{base_url.rstrip('/')}/chat/completions"
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    payload = {
+    body = {
         "model": model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -112,15 +133,33 @@ def call_llm(
         ],
         "temperature": 0,
         "max_tokens": max_tokens,
-        "stream": False,
+        "stream": True,
     }
     if extra_body:                      # provider-specific knobs, e.g. DeepSeek thinking toggle
-        payload.update(extra_body)
-    res = requests.post(url, headers=headers, json=payload, timeout=timeout)
-    if not res.ok:
-        raise RuntimeError(f"LLM HTTP {res.status_code}: {res.text}")
-    data = res.json()
-    return data["choices"][0]["message"]["content"]
+        body.update(extra_body)
+
+    deadline = time.monotonic() + timeout
+    buffer = ""
+    with requests.post(url, headers=headers, json=body, stream=True,
+                       timeout=(CONNECT_TIMEOUT, timeout)) as res:
+        if not res.ok:
+            raise RuntimeError(f"LLM HTTP {res.status_code}: {res.text}")
+        for raw_line in res.iter_lines():
+            if time.monotonic() > deadline:
+                break
+            line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+            if not line.startswith("data: "):
+                continue
+            data = line[6:]
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+                delta = chunk["choices"][0]["delta"].get("content") or ""
+                buffer += delta
+            except (json.JSONDecodeError, KeyError, IndexError):
+                continue
+    return buffer
 
 
 def _extract_json(raw: str):
@@ -286,16 +325,16 @@ def review(
     return parse_findings(raw, staged_files)
 
 
-def review_staged(*, timeout: int = DEFAULT_TIMEOUT) -> Tuple[List[dict], bool]:
+def review_staged(*, timeout: Optional[int] = None) -> Tuple[List[dict], bool]:
     """Convenience entry: pull the staged diff/files from git and the key from env,
     then review with DeepSeek defaults. Returns `(findings, ok)` like `review`. For
     manual runs/demos; the real CLI wiring lives in the orchestration once
-    decision_engine lands."""
+    decision_engine lands. Timeout defaults to COMMITGATE_AI_TIMEOUT env var or 20s."""
     from commitgate.git_utils import get_staged_diff, get_staged_files
 
     return review(
         get_staged_diff(),
         get_staged_files(),
         api_key=deepseek_api_key(),
-        timeout=timeout,
+        timeout=timeout if timeout is not None else _ai_timeout(),
     )
