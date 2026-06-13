@@ -15,52 +15,43 @@ Findings from both layers are merged, deduplicated, and fed into a **decision en
 
 ## Table of Contents
 
-- [How it works](#how-it-works)
-- [Prerequisites](#prerequisites)
 - [Setup](#setup)
 - [Usage](#usage)
+- [How it works](#how-it-works)
 - [Splunk Setup](#splunk-setup-optional)
 - [Module map](#module-map)
 - [Data Privacy](#data-privacy)
 
 ---
 
-## How it works
+## Setup
 
-```
-git commit
-  └─ .git/hooks/pre-commit  →  commitgate scan
-        ├─ gitleaks_runner    scan staged diff for known secret patterns
-        ├─ ai_reviewer        LLM semantic review for issues regex can't catch
-        ├─ decision_engine    merge findings → allow / warn / block
-        ├─ report_generator   Rich terminal output
-        ├─ splunk_logger      audit event to Splunk HEC (optional)
-        └─ exit code          block → non-zero (stops commit) · allow/warn → 0
-```
+### 1. Install prerequisites
 
----
-
-## Prerequisites
+Install these on your machine **before** installing CommitGate:
 
 - **Python ≥ 3.10**
 - **Git**
-- **Gitleaks** — external binary, installed separately:
+- **Gitleaks** — an external binary that must be installed separately (it is *not* pulled in by `pip`):
   - Windows: `winget install gitleaks`
   - macOS: `brew install gitleaks`
   - Linux: download the release binary and place it on your `PATH`
-- **DeepSeek API key** — required for the AI reviewer (`platform.deepseek.com`)
 
----
+  Confirm it's on your `PATH` before continuing:
 
-## Setup
+  ```bash
+  gitleaks version
+  ```
 
-### 1. Install CommitGate
+- **DeepSeek API key** — required for the AI reviewer (get one at `platform.deepseek.com`). You'll add it to your `.env` in step 3.
+
+### 2. Install CommitGate
 
 ```bash
 pip install git+https://github.com/ductrl/CommitGate.git
 ```
 
-### 2. Configure environment variables
+### 3. Configure environment variables
 
 Create a `.env` file in the root of **your project** (not CommitGate's repo):
 
@@ -79,7 +70,7 @@ DEEPSEEK_API_KEY=sk-your-key-here
 
 **`.env` should be gitignored — your keys should never enter source or git history.**
 
-### 3. Initialize CommitGate
+### 4. Initialize CommitGate
 
 Run this inside the repo you want to protect:
 
@@ -132,6 +123,21 @@ Once the hook is installed, just commit normally. CommitGate intercepts the comm
 git add <file>
 commitgate scan
 git restore --staged <file>
+```
+
+---
+
+## How it works
+
+```
+git commit
+  └─ .git/hooks/pre-commit  →  commitgate scan
+        ├─ gitleaks_runner    scan staged diff for known secret patterns
+        ├─ ai_reviewer        LLM semantic review for issues regex can't catch
+        ├─ decision_engine    merge findings → allow / warn / block
+        ├─ report_generator   Rich terminal output
+        ├─ splunk_logger      audit event to Splunk HEC (optional)
+        └─ exit code          block → non-zero (stops commit) · allow/warn → 0
 ```
 
 ---
