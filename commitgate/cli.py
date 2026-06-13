@@ -3,7 +3,7 @@ from rich import print
 
 from commitgate.git_utils import install_pre_commit_hook
 from commitgate.gitleaks_runner import run_gitleaks_scan
-from commitgate.report_generator import format_finding, severity_color
+from commitgate.report_generator import format_finding, severity_color, remove_dup
 from commitgate.ai_reviewer import review_staged
 
 app = typer.Typer()
@@ -26,7 +26,7 @@ def scan(
 
     ai_findings, ai_review_ok = review_staged(timeout=timeout)
 
-    all_findings = gitleaks_findings + ai_findings
+    all_findings = remove_dup(gitleaks_findings + ai_findings)
 
     # AI review failed
     if not ai_review_ok:
@@ -60,7 +60,7 @@ def scan(
         else:
             finding_output = format_finding(finding=finding)
 
-        print(f"[{color}]{finding_output}[/{color}]")
+        print(finding_output)
         print()
 
     print("[red]Commit blocked by CommitGate.[/red]")
