@@ -39,19 +39,18 @@ def log_decision(decision: dict) -> None:
         "sourcetype": "commitgate:audit",
     }
 
-    verify_ssl = os.environ.get("SPLUNK_VERIFY_SSL", "true").lower() != "false"
+    # Use SPLUNK_CA_BUNDLE for self-signed certs (e.g. Splunk Cloud free trial).
+    # SSL verification is always enforced — pass a CA file path rather than disabling it.
+    ca_bundle = os.environ.get("SPLUNK_CA_BUNDLE")
+    verify = ca_bundle if ca_bundle else True
 
     try:
-        import urllib3
-        if not verify_ssl:
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
         resp = requests.post(
             url,
             headers={"Authorization": f"Splunk {token}"},
             data=json.dumps(payload),
             timeout=_HEC_TIMEOUT,
-            verify=verify_ssl,
+            verify=verify,
         )
         resp.raise_for_status()
     except Exception as exc:
