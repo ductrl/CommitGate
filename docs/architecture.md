@@ -1,61 +1,64 @@
-This document provides a high-level overview of the project architecture. Detailed implementation behavior should be documented in code comments and docstrings.
+# Architecture
 
-## Module Descriptions
+## Stack
 
-#### cli.py
+- **Language:** Python ≥ 3.10
+- **CLI:** Typer
+- **Terminal output:** Rich
+- **Config:** PyYAML (`commitgate.yaml`)
+- **LLM HTTP:** requests (DeepSeek)
+- **Secret scanning:** Gitleaks — external binary invoked via `subprocess`
 
-User-facing command-line interface
+## Orchestration Flow
 
-- `scan()` – Runs a CommitGate security scan.
-- `install_hook()` – Installs the Git pre-commit hook.
-- `version()` – Displays the current CommitGate version.
-
-#### git_utils.py
-
-Git-related utility functions.
-
-- `get_staged_files()` – Returns a list of staged file paths.
-- `get_staged_diff()` – Returns the staged Git diff as a string.
-- `is_git_repo()` – Checks whether the current directory is inside a Git repository.
-- `install_pre_commit_hook()` – Creates a pre-commit hook that runs `commitgate scan`.
-
-#### gitleaks_runner.py
-
-- Execute Gitleaks
-- Parse Gitleaks output
-- Return findings
-
-#### ai_reviewer.py
-
-Semantic (LLM) review of the staged diff. Findings are gitleaks-shaped dicts; key comes from `DEEPSEEK_API_KEY`. Fail-safe: any LLM error returns `([], False)` (deterministic gate unaffected).
-
-- `review(diff, staged_files, ...)` – **Main entry for the CLI.** Runs the full AI review over a staged diff. Returns `(findings, ok)` — the finding dicts plus a bool flagging whether the review completed, so the caller can warn rather than treat a failed/blind review as clean. Never raises.
-- `review_staged()` – Convenience entry: pulls the staged diff/files from git and the API key from env, then calls `review()` with defaults. Returns `(findings, ok)` too.
-- `deepseek_api_key()` – Reads `DEEPSEEK_API_KEY` from the environment (loads `.env` if present).
-- `build_prompt(diff)` – Wraps the staged diff into the user prompt.
-- `call_llm(base_url, model, api_key, prompt, ...)` – Provider-agnostic call to an OpenAI-compatible `/chat/completions` endpoint; returns the raw response text.
-- `parse_findings(raw, staged_files)` – Validates the model response into finding dicts (drops findings for files not in the staged set). Returns `(findings, parse_ok)`; `parse_ok` is `False` only when nothing parseable could be recovered — a clean empty result is `True`.
-
-```text
-review(diff, staged_files, ...) -> (list[dict], ok: bool)
-  ├─ empty diff            → ([], True)    # nothing to review ≠ failure, don't warn
-  ├─ call_llm() raises     → ([], False)   # network/timeout/HTTP — warn stays
-  └─ else parse_findings(raw, staged) → return (findings, parse_ok)
-
-parse_findings(raw, staged) -> (list[dict], parse_ok: bool)
-  ├─ nothing parseable     → ([], False)   # _extract_json None AND _salvage_objects []
-  └─ parsed (any length)   → (findings, True)   # incl. valid "[]" = clean, ok=True
+```
+git commit
+   └─ .git/hooks/pre-commit  →  commitgate scan
+        ├─ git_utils.get_staged_files/diff()
+        ├─ config.load_config()               # commitgate.yaml — thresholds, flags
+        ├─ gitleaks_runner.run_gitleaks_scan() # deterministic secret detection
+        ├─ ai_reviewer.review_staged()        # semantic LLM review → (findings, ok)
+        ├─ decision_engine.decide(findings)   # allow / warn / block
+        ├─ report_generator                   # Rich terminal output
+        ├─ splunk_logger.log_decision()       # audit event (skipped if unconfigured)
+        └─ exit code                          # block → non-zero · allow/warn → 0
 ```
 
-#### decision_engine.py
+## Modules
 
-- Determine action: allow / warn / block
+#### `cli.py`
+Typer entry point. Commands: `scan`, `install-hook`, `init`, `version`.
 
-#### report_generator.py
+#### `git_utils.py`
+All Git operations via subprocess.
+- `get_staged_files()` — list of staged file paths
+- `get_staged_diff()` — full staged diff as a string
+- `is_git_repo()` — validates the working directory is a Git repo
+- `install_pre_commit_hook()` — writes `.git/hooks/pre-commit`
 
-- Generate security report
+#### `config.py`
+Loads `commitgate.yaml` from the repo root and merges with built-in defaults.
+- `load_config()` — returns the merged config dict
+- `create_default_config()` — writes `commitgate.yaml` if not present
 
-#### config.py
+#### `gitleaks_runner.py`
+Locates the gitleaks binary on PATH, runs it per staged file, and parses the JSON report into finding dicts.
 
-- Load YAML configs
-- Provide application settings
+#### `decision_engine.py`
+`decide(findings) → Decision`. Reads `policy.block_severity` from config; derives warn threshold as one rank below block. Returns `allow`, `warn`, or `block`.
+
+#### `report_generator.py`
+Rich terminal output. Formats findings with severity colouring, deduplicates overlapping gitleaks and AI findings.
+
+#### `ai_reviewer.py`
+Semantic review of the staged diff via an LLM.
+- `review_staged()` — main entry; pulls staged diff from git, calls the LLM, returns `(findings, ok)`
+- `review(diff, staged_files)` — core orchestrator
+- `build_prompt(diff)` — wraps the diff into the security-review prompt
+- `call_llm(...)` — DeepSeek `/chat/completions` call with SSE streaming
+- `parse_findings(raw, staged_files)` — validates model output into finding dicts; returns `(findings, parse_ok)`
+
+`ok=False` on any LLM error or timeout — the caller warns and continues on the deterministic gate only. Never raises.
+
+#### `splunk_logger.py`
+`log_decision(decision) → None`. POSTs the scan decision to a Splunk HEC endpoint. Skips silently if `SPLUNK_HEC_TOKEN` is not set. Redacts the `secret` field before sending. Never raises.
