@@ -1,39 +1,46 @@
 # CommitGate
 
-An AI-powered Git **pre-commit security gate**. On `git commit` it scans the staged diff
-with two layers and decides whether to let the commit through:
+An AI-powered Git **pre-commit security gate**. On every `git commit`, CommitGate scans the staged diff with two layers and decides whether to let the commit through.
 
-1. **Gitleaks** — fast, deterministic regex/entropy scan for known secret shapes.
-2. **AI reviewer** — an LLM (DeepSeek) that catches what regex can't: hardcoded internal
-   URLs, non-standard credentials, risky `eval`/`os.system`, data-leaking logic.
+| Layer | Tool | Catches |
+|-------|------|---------|
+| Deterministic | **Gitleaks** | Known secret shapes — API keys, tokens, passwords matching standard patterns |
+| Semantic | **AI reviewer** (DeepSeek) | What regex misses — internal URLs, non-standard credentials, `eval`/`os.system`, data-leaking logic |
 
-## Pipeline
+Findings from both layers are merged, deduplicated, and fed into a **decision engine** that rules `allow / warn / block`. A Rich terminal report explains why.
+
+---
+
+## How it works
 
 ```
 git commit
-  └─ .git/hooks/pre-commit → commitgate scan
-        ├─ gitleaks_runner   → deterministic secret scan   [working]
-        ├─ ai_reviewer       → semantic LLM review         [working, run standalone for now]
-        └─ decision_engine   → allow / warn / block        [not built yet]
+  └─ .git/hooks/pre-commit  →  commitgate scan
+        ├─ gitleaks_runner    scan staged diff for known secret patterns
+        ├─ ai_reviewer        LLM semantic review for issues regex can't catch
+        ├─ decision_engine    merge findings → allow / warn / block
+        ├─ report_generator   Rich terminal output
+        ├─ splunk_logger      audit event to Splunk HEC (optional)
+        └─ exit code          block → non-zero (stops commit) · allow/warn → 0
 ```
 
-Today `commitgate scan` runs the **gitleaks** layer and blocks the commit (exit 1) if it
-finds secrets. The **AI reviewer** is built and works, but is not yet wired into `scan` —
-it runs standalone until `decision_engine` lands.
+---
 
 ## Prerequisites
 
 - **Python ≥ 3.9**
 - **Git**
-- **Gitleaks** — an external binary, installed separately (not a pip package):
+- **Gitleaks** — external binary, installed separately:
   - Windows: `winget install gitleaks`
   - macOS: `brew install gitleaks`
-  - Linux: download the release binary and put it on your `PATH`
-- **DeepSeek API key** — only needed to run the AI reviewer (see step 4)
+  - Linux: download the release binary and place it on your `PATH`
+- **DeepSeek API key** — required for the AI reviewer (`platform.deepseek.com`)
+
+---
 
 ## Setup
 
-### 1. Clone
+### 1. Clone the repo
 
 ```bash
 git clone https://github.com/ductrl/CommitGate.git
@@ -54,87 +61,185 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3. Install CommitGate (editable, with dev tools)
+### 3. Install CommitGate
 
 ```bash
 pip install -e ".[dev]"
 ```
-This installs the `commitgate` command plus all dependencies.
 
-### 4. Configure the AI reviewer (optional)
+This installs the `commitgate` CLI and all dependencies.
 
-The AI reviewer reads settings from a local `.env` file (never committed).
+### 4. Configure environment variables
 
 ```bash
 cp .env.example .env          # Windows: Copy-Item .env.example .env
 ```
 
-Open `.env` and set your values:
+Open `.env` and fill in your values:
 
+```env
+# Required — AI reviewer
+DEEPSEEK_API_KEY=sk-your-key-here
+
+# Optional — AI review timeout in seconds (default: 20)
+# COMMITGATE_AI_TIMEOUT=20
+
+# Optional — Splunk audit logging (see Splunk Setup below)
+# SPLUNK_HEC_TOKEN=your-hec-token-here
+# SPLUNK_HEC_URL=https://prd-p-yourinstance.splunkcloud.com:8088/services/collector/event
+# SPLUNK_VERIFY_SSL=false
 ```
-# Required: your DeepSeek API key (get one at platform.deepseek.com)
-DEEPSEEK_API_KEY=sk-your-real-key
 
-# Optional: how long the AI reviewer is allowed to run per commit, in seconds.
-# Default is 20. Lower values mean less waiting; the reviewer collects as many
-# findings as it can before the budget runs out and then stops cleanly.
-COMMITGATE_AI_TIMEOUT=20
-```
-
-`.env` is gitignored — your key and settings never enter source or git history.
-
-> **Future:** once the config module lands, these settings will move to a
-> `.commitgate.yml` file in your repo root. The `.env` vars will remain as
-> an override for CI / per-machine customisation.
+`.env` is gitignored — your keys never enter source or git history.
 
 ### 5. Install the Git hook
 
 ```bash
 commitgate install-hook
 ```
-This writes `.git/hooks/pre-commit` so `commitgate scan` runs automatically on every commit.
+
+This writes `.git/hooks/pre-commit` so `commitgate scan` fires automatically on every commit.
+
+---
 
 ## Usage
 
 ```bash
-commitgate scan          # scan staged files with gitleaks (exit 1 = blocked)
+commitgate scan          # scan staged files (runs automatically via hook)
+commitgate install-hook  # write .git/hooks/pre-commit
 commitgate version       # print version
-commitgate install-hook  # install the pre-commit hook
 ```
 
-Once the hook is installed, just commit normally — the scan runs first and stops the commit
-if gitleaks finds a secret.
+Once the hook is installed, just commit normally. CommitGate intercepts the commit, scans the diff, and either lets it through or blocks it with a report.
 
-### Running the AI reviewer standalone
+### Decision outcomes
 
-Until it's wired into `scan`, run it directly on your staged changes (needs the `.env` key):
+| Outcome | Meaning | Exit code |
+|---------|---------|-----------|
+| `allow` | No findings, or all below warn threshold | `0` — commit proceeds |
+| `warn` | Medium-severity findings | `0` — commit proceeds, warnings printed |
+| `block` | High or critical findings | `1` — commit stopped |
+
+### Manual scan (without committing)
 
 ```bash
 git add <file>
-python -c "from commitgate.ai_reviewer import review_staged; print(review_staged())"
+commitgate scan
+git restore --staged <file>
 ```
-It returns a tuple `(findings, ok)`: `findings` is a list of finding dicts (`file`, `start_line`,
-`severity`, `description`, …), and `ok` is a bool flagging whether the review actually completed.
-A clean pass is `([], True)`; a failed/unavailable review is `([], False)` — so the caller can tell
-"nothing found" from "couldn't review" and warn instead of assuming all-clear. It fails safe — an LLM
-error returns `([], False)`, never blocks.
 
-## Running the tests
+### Test samples
+
+Pre-made files in `tests/samples/` let you test each scanner:
+
+| File | Tests |
+|------|-------|
+| `gitleaks_secrets.py` | Gitleaks catches Stripe + Slack tokens |
+| `hardcoded_creds_nonstandard.py` | AI catches non-standard credentials |
+| `semantic_vulns.py` | AI catches `os.system`, `eval`, internal URL |
+| `sql_and_data_leak.py` | AI catches SQL injection + password logging |
+
+```bash
+git add tests/samples/semantic_vulns.py
+commitgate scan
+git restore --staged tests/samples/semantic_vulns.py
+```
+
+---
+
+## Splunk Setup (optional)
+
+CommitGate can send an audit event to Splunk after every scan, giving you a searchable history of every commit decision.
+
+### 1. Create a Splunk account
+
+Sign up at `splunk.com`. Start a **Splunk Cloud free trial** from your account dashboard.
+
+### 2. Enable HTTP Event Collector (HEC)
+
+In your Splunk UI:
+
+1. **Settings** → **Data Inputs** → **HTTP Event Collector**
+2. Click **Global Settings** → set **All Tokens** to **Enabled** → **Save**
+
+### 3. Create a HEC token
+
+1. Still on the HTTP Event Collector page → **New Token**
+2. **Name:** `commitgate-audit`
+3. Click **Next** → **Source type:** type `commitgate:audit` and select **New**
+4. **Index:** `main` → **Review** → **Submit**
+5. Copy the token shown on the confirmation screen
+
+### 4. Add to your `.env`
+
+```env
+SPLUNK_HEC_TOKEN=your-token-here
+SPLUNK_HEC_URL=https://prd-p-yourinstance.splunkcloud.com:8088/services/collector/event
+SPLUNK_VERIFY_SSL=false
+```
+
+> `SPLUNK_VERIFY_SSL=false` is required for Splunk Cloud free trial — it uses a
+> self-signed certificate on port 8088.
+
+### 5. Verify the connection
+
+```powershell
+$headers = @{ Authorization = "Splunk $env:SPLUNK_HEC_TOKEN" }
+$body = '{"event":{"test":"hello"},"sourcetype":"commitgate:audit"}'
+Invoke-RestMethod -Uri $env:SPLUNK_HEC_URL -Method Post -Headers $headers -Body $body
+```
+
+Expected response: `text=Success code=0`
+
+### 6. View events in Splunk
+
+**Search & Reporting** → run:
+
+```
+sourcetype="commitgate:audit"
+```
+
+Each `commitgate scan` appears as one event with `action`, `reason`, `findings_count`, and the full findings list.
+
+### Splunk dashboard
+
+Build a **CommitGate Security Gate** dashboard with these searches:
+
+| Panel | Type | Search |
+|-------|------|--------|
+| Decisions over time | Line chart | `sourcetype="commitgate:audit" \| timechart count by action` |
+| Blocks today | Single value | `sourcetype="commitgate:audit" action=block \| stats count as Blocked` |
+| Top triggered rules | Bar chart | `sourcetype="commitgate:audit" \| stats count by findings{}.rule \| sort -count \| head 10` |
+| Findings by severity | Pie chart | `sourcetype="commitgate:audit" \| stats count by findings{}.severity` |
+| Recent blocked commits | Table | `sourcetype="commitgate:audit" action=block \| table _time reason findings_count \| sort -_time` |
+
+---
+
+## Running tests
 
 ```bash
 pytest -q
 ```
 
+Integration tests (live Splunk) are skipped automatically unless `SPLUNK_HEC_TOKEN` is set in your shell. To run them:
+
+```bash
+pytest tests/test_splunk_logger.py -v
+```
+
+---
+
 ## Module map
 
 | Module | Role | Status |
 |--------|------|--------|
-| `cli.py` | Typer commands: `scan`, `install-hook`, `version` | working |
-| `git_utils.py` | Staged files/diff, is-git-repo, hook install | working |
-| `gitleaks_runner.py` | Run gitleaks, parse findings | working |
-| `ai_reviewer.py` | LLM semantic review (DeepSeek), finding dicts | working (standalone) |
-| `decision_engine.py` | Merge findings → allow/warn/block | not built |
-| `report_generator.py` | Rich terminal report | not built |
-| `config.py` | Load `.commitgate.yml` settings | not built |
+| `cli.py` | Typer commands: `scan`, `install-hook`, `version` | Working |
+| `git_utils.py` | Staged files/diff, is-git-repo, hook install | Working |
+| `gitleaks_runner.py` | Run gitleaks binary, parse findings into dicts | Working |
+| `ai_reviewer.py` | LLM semantic review (DeepSeek), returns `(findings, ok)` | Working |
+| `decision_engine.py` | Merge findings → `allow / warn / block` | Working |
+| `report_generator.py` | Format findings for Rich terminal output | Working |
+| `splunk_logger.py` | POST audit event to Splunk HEC after every scan | Working |
+| `config.py` | Load `.commitgate.yml` settings and defaults | Planned |
 
-See `docs/architecture.md` for details, and `CONTRIBUTING.md` for the branch/PR workflow.
+See `docs/architecture.md` for the full architecture and `CONTRIBUTING.md` for the branch/PR workflow.
