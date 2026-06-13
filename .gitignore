@@ -223,3 +223,5 @@ commitgate/gitleaks-report.json
 .vscode/
 fake-codes
 splunk-ca.pem
+fake-codes/
+commitgate.yaml
