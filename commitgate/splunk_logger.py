@@ -39,10 +39,10 @@ def log_decision(decision: dict) -> None:
         "sourcetype": "commitgate:audit",
     }
 
-    # Use SPLUNK_CA_BUNDLE for self-signed certs (e.g. Splunk Cloud free trial).
-    # SSL verification is always enforced — pass a CA file path rather than disabling it.
-    ca_bundle = os.environ.get("SPLUNK_CA_BUNDLE")
-    verify = ca_bundle if ca_bundle else True
+    # Splunk Cloud free trial issues certs without the Authority Key Identifier extension
+    # required by Python 3.10+, making SSL verification impossible on the free plan.
+    # Set SPLUNK_VERIFY_SSL=false for free trial; leave unset (defaults true) for paid accounts.
+    verify_ssl = os.environ.get("SPLUNK_VERIFY_SSL", "true").lower() != "false"
 
     try:
         resp = requests.post(
@@ -50,7 +50,7 @@ def log_decision(decision: dict) -> None:
             headers={"Authorization": f"Splunk {token}"},
             data=json.dumps(payload),
             timeout=_HEC_TIMEOUT,
-            verify=verify,
+            verify=verify_ssl,
         )
         resp.raise_for_status()
     except Exception as exc:

@@ -87,7 +87,7 @@ DEEPSEEK_API_KEY=sk-your-key-here
 # Optional — Splunk audit logging (see Splunk Setup below)
 # SPLUNK_HEC_TOKEN=your-hec-token-here
 # SPLUNK_HEC_URL=https://prd-p-yourinstance.splunkcloud.com:8088/services/collector/event
-# SPLUNK_CA_BUNDLE=/path/to/splunk-ca.pem   # for self-signed certs — see Splunk Setup
+# SPLUNK_VERIFY_SSL=false                   # required for Splunk Cloud free trial
 ```
 
 `.env` is gitignored — your keys never enter source or git history.
@@ -163,38 +163,17 @@ In your Splunk UI:
 4. **Index:** `main` → **Review** → **Submit**
 5. Copy the token shown on the confirmation screen
 
-### 4. Export the Splunk certificate
-
-Splunk Cloud free trial uses a self-signed certificate on port 8088. Export it once so CommitGate can verify the connection securely:
-
-**Windows (PowerShell):**
-```powershell
-python -c "
-import ssl, socket
-ctx = ssl.create_default_context()
-ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE
-with socket.create_connection(('prd-p-yourinstance.splunkcloud.com', 8088)) as sock:
-    with ctx.wrap_socket(sock, server_hostname='prd-p-yourinstance.splunkcloud.com') as s:
-        pem = ssl.DER_cert_to_PEM_cert(s.getpeercert(binary_form=True))
-        open('splunk-ca.pem', 'w').write(pem)
-print('Saved splunk-ca.pem')
-"
-```
-
-Replace `prd-p-yourinstance` with your actual Splunk hostname. The file `splunk-ca.pem` is gitignored — it stays local to your machine.
-
-> If your Splunk instance has a proper CA-signed certificate (e.g. paid account), skip this step and omit `SPLUNK_CA_BUNDLE` from your `.env`.
-
-### 5. Add to your `.env`
+### 4. Add to your `.env`
 
 ```env
 SPLUNK_HEC_TOKEN=your-token-here
 SPLUNK_HEC_URL=https://prd-p-yourinstance.splunkcloud.com:8088/services/collector/event
-SPLUNK_CA_BUNDLE=/path/to/your/splunk-ca.pem
+SPLUNK_VERIFY_SSL=false
 ```
 
-### 6. Verify the connection
+> **Why `SPLUNK_VERIFY_SSL=false`?** Splunk Cloud free trial issues certificates missing the Authority Key Identifier extension required by Python 3.10+, making SSL verification impossible on the free plan. Paid Splunk accounts use properly signed certificates and do not need this setting.
+
+### 5. Verify the connection
 
 Stage any file and run a manual scan:
 
