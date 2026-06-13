@@ -13,6 +13,18 @@ Findings from both layers are merged, deduplicated, and fed into a **decision en
 
 ---
 
+## Table of Contents
+
+- [How it works](#how-it-works)
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+- [Usage](#usage)
+- [Splunk Setup](#splunk-setup-optional)
+- [Module map](#module-map)
+- [Data Privacy](#data-privacy)
+
+---
+
 ## How it works
 
 ```
