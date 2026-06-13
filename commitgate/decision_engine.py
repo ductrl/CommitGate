@@ -1,15 +1,17 @@
 from typing import List
 
+from commitgate.config import load_config
+
 SEVERITY_RANK: dict[str, int] = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
 
-def decide(
-    findings: List[dict],
-    warn_threshold: int = 1,
-    block_threshold: int = 2,
-) -> dict:
+def decide(findings: List[dict]) -> dict:
     if not findings:
         return {"action": "allow", "findings": [], "reason": "No findings detected."}
+
+    config = load_config()
+    block_threshold = SEVERITY_RANK.get(config["policy"]["block_severity"], 2)
+    warn_threshold = max(0, block_threshold - 1)
 
     max_sev = max(SEVERITY_RANK.get(f.get("severity", "low"), 0) for f in findings)
     n = len(findings)

@@ -1,11 +1,13 @@
 # CommitGate
 
-An AI-powered Git **pre-commit security gate**. On every `git commit`, CommitGate scans the staged diff with two layers and decides whether to let the commit through.
+An AI-powered security agent for Git users that checks staged files for potential vulnerabilities
+every time the git commit command is ran and prevent the changes from being committed if
+vulnerabilities are found. 
 
 | Layer | Tool | Catches |
 |-------|------|---------|
-| Deterministic | **Gitleaks** | Known secret shapes — API keys, tokens, passwords matching standard patterns |
-| Semantic | **AI reviewer** (DeepSeek) | What regex misses — internal URLs, non-standard credentials, `eval`/`os.system`, data-leaking logic |
+| Deterministic | [**Gitleaks**](https://github.com/gitleaks/gitleaks) | Known secret shapes — API keys, tokens, passwords matching standard patterns |
+| Semantic | **AI reviewer** ([DeepSeek](https://www.deepseek.com/)) | What regex misses — internal URLs, non-standard credentials, `eval`/`os.system`, data-leaking logic |
 
 Findings from both layers are merged, deduplicated, and fed into a **decision engine** that rules `allow / warn / block`. A Rich terminal report explains why.
 
@@ -28,7 +30,7 @@ git commit
 
 ## Prerequisites
 
-- **Python ≥ 3.9**
+- **Python ≥ 3.10**
 - **Git**
 - **Gitleaks** — external binary, installed separately:
   - Windows: `winget install gitleaks`
@@ -40,42 +42,15 @@ git commit
 
 ## Setup
 
-### 1. Clone the repo
+### 1. Install CommitGate
 
 ```bash
-git clone https://github.com/ductrl/CommitGate.git
-cd CommitGate
+pip install git+https://github.com/ductrl/CommitGate.git
 ```
 
-### 2. Create and activate a virtual environment
+### 2. Configure environment variables
 
-**Windows (PowerShell):**
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-
-**macOS / Linux:**
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### 3. Install CommitGate
-
-```bash
-pip install -e ".[dev]"
-```
-
-This installs the `commitgate` CLI and all dependencies.
-
-### 4. Configure environment variables
-
-```bash
-cp .env.example .env          # Windows: Copy-Item .env.example .env
-```
-
-Open `.env` and fill in your values:
+Create a `.env` file in the root of **your project** (not CommitGate's repo):
 
 ```env
 # Required — AI reviewer
@@ -90,24 +65,43 @@ DEEPSEEK_API_KEY=sk-your-key-here
 # SPLUNK_VERIFY_SSL=false                   # required for Splunk Cloud free trial
 ```
 
-`.env` is gitignored — your keys never enter source or git history.
+**`.env` should be gitignored — your keys should never enter source or git history.**
 
-### 5. Install the Git hook
+### 3. Initialize CommitGate
+
+Run this inside the repo you want to protect:
 
 ```bash
-commitgate install-hook
+commitgate init
 ```
 
-This writes `.git/hooks/pre-commit` so `commitgate scan` fires automatically on every commit.
+This does two things at once:
+- Creates a `commitgate.yaml` config file in the repo root
+- Writes `.git/hooks/pre-commit` so `commitgate scan` fires automatically on every commit
+
+The generated `commitgate.yaml` looks like this — edit it to match your needs:
+
+```yaml
+ai:
+  enabled: true          # set to false to run gitleaks only (no API key needed)
+  provider: deepseek
+  timeout: 20            # seconds before AI review is abandoned (fail closed → warn)
+policy:
+  block_severity: high   # findings at this severity or above stop the commit, available options: low / medium / high / critical
+reporting:
+  show_suggestions: true # include AI fix suggestions in the terminal report
+```
 
 ---
 
 ## Usage
 
 ```bash
+commitgate init          # create commitgate.yaml + install pre-commit hook
 commitgate scan          # scan staged files (runs automatically via hook)
-commitgate install-hook  # write .git/hooks/pre-commit
+commitgate install-hook  # install pre-commit hook only (no config file)
 commitgate version       # print version
+SKIP=all git commit ...  # bypass CommitGate for a single commit
 ```
 
 Once the hook is installed, just commit normally. CommitGate intercepts the commit, scans the diff, and either lets it through or blocks it with a report.
@@ -126,16 +120,6 @@ Once the hook is installed, just commit normally. CommitGate intercepts the comm
 git add <file>
 commitgate scan
 git restore --staged <file>
-```
-
-### Manual scan (testing)
-
-Stage any file with a planted secret or vulnerability, run a scan, then unstage:
-
-```bash
-git add <file-with-issue>
-commitgate scan
-git restore --staged <file-with-issue>
 ```
 
 ---
@@ -185,7 +169,7 @@ git restore --staged <any-staged-file>
 
 If the audit event reaches Splunk you'll see no yellow "Splunk audit log failed" warning in the output.
 
-### 7. View events in Splunk
+### 6. View events in Splunk
 
 **Search & Reporting** → run:
 
@@ -209,20 +193,6 @@ Build a **CommitGate Security Gate** dashboard with these searches:
 
 ---
 
-## Running tests
-
-```bash
-pytest -q
-```
-
-Integration tests (live Splunk) are skipped automatically unless `SPLUNK_HEC_TOKEN` is set in your shell. To run them:
-
-```bash
-pytest tests/test_splunk_logger.py -v
-```
-
----
-
 ## Module map
 
 | Module | Role | Status |
@@ -237,3 +207,11 @@ pytest tests/test_splunk_logger.py -v
 | `config.py` | Load `.commitgate.yml` settings and defaults | Planned |
 
 See `docs/architecture.md` for the full architecture and `CONTRIBUTING.md` for the branch/PR workflow.
+
+---
+
+## Data Privacy
+
+When `ai.enabled: true`, CommitGate sends your **staged code diffs to the DeepSeek API** (an external service). Do not use the AI reviewer on confidential or proprietary code without your organization's authorization. Set `ai.enabled: false` to run gitleaks only — no data leaves your machine.
+
+DeepSeek is used for the current demo. Local LLM support (Ollama) and self-hosted Splunk are on the roadmap so CommitGate can operate fully air-gapped.
