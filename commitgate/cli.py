@@ -6,6 +6,8 @@ from commitgate.gitleaks_runner import run_gitleaks_scan
 from commitgate.report_generator import format_finding, severity_color, remove_dup
 from commitgate.ai_reviewer import review_staged
 from commitgate.config import create_default_config, load_config
+from commitgate.decision_engine import decide
+from commitgate.splunk_logger import log_decision
 
 app = typer.Typer()
 
@@ -40,33 +42,36 @@ def scan(
 
     all_findings = remove_dup(gitleaks_findings + ai_findings)
 
-    # AI review failed
     if not ai_review_ok:
         print("[yellow]AI review failed or returned an unusable response.[/yellow]")
         print("[yellow]Continuing with deterministic checks only.[/yellow]")
 
     # No secrets and vulnerabilities found
     if not all_findings:
+        if not ai_enabled:
+            print("[yellow]AI review disabled by config.[/yellow]")
+        
         print("[green]No security findings found![/green]")
         print("[green]CommitGate scan completed![/green]")
         raise typer.Exit(code=0)
 
-    print(f"[red]CommitGate detected {len(all_findings)} security finding(s):[/red]")
+    decision = decide(all_findings)
+    log_decision(decision)
+    action = decision["action"]
+
+    color = "yellow" if action == "warn" else "red"
+    print(f"[{color}]CommitGate detected {len(all_findings)} security finding(s):[/{color}]")
 
     for index, finding in enumerate(all_findings):
-        # Formatting color based on severity
         severity = finding.get("severity", "").lower()
-        color = severity_color(severity=severity)
-
-        # Printing finding
+        sev_color = severity_color(severity=severity)
 
         print(
-            f"[{color}]"
+            f"[{sev_color}]"
             f"[{severity.upper()}] Finding #{index + 1}"
-            f"[/{color}]"
+            f"[/{sev_color}]"
         )
-        finding_output: str
-        
+
         if finding.get("suggestion"):
             finding_output = format_finding(finding=finding, include_suggestion=show_suggestions)
         else:
@@ -77,6 +82,10 @@ def scan(
 
     if not ai_enabled:
         print("[yellow]AI review disabled by config.[/yellow]")
+
+    if action == "warn":
+        print("[yellow]CommitGate: warnings found. Commit proceeding.[/yellow]")
+        raise typer.Exit(code=0)
 
     print("[red]Commit blocked by CommitGate.[/red]")
     raise typer.Exit(code=1)
