@@ -1,5 +1,6 @@
 import typer
 from rich import print
+import os
 
 from commitgate.git_utils import install_pre_commit_hook
 from commitgate.gitleaks_runner import run_gitleaks_scan
@@ -22,6 +23,12 @@ def scan(
 ):
     # TODO: Move format_finding to report_generator
     # TODO: Add a skip option to commit without having CommitGate scan it
+
+    # HANDLE SKIP
+    skip = os.environ.get("SKIP", "")
+    if skip == "all":
+        print("[yellow]CommitGate skipped via SKIP=all[/yellow]")
+        raise typer.Exit(code=0)
 
     # LOAD CONFIGS
 
