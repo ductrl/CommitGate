@@ -21,16 +21,22 @@ def scan(
     # TODO: Move format_finding to report_generator
     # TODO: Add a skip option to commit without having CommitGate scan it
 
-    # Load configs from commitgate.yaml
+    # LOAD CONFIGS
 
     config = load_config()
 
     timeout = config["ai"]["timeout"]
     show_suggestions = config["reporting"]["show_suggestions"]
+    ai_enabled = config["ai"]["enabled"]
+
+    # SECURITY SCAN
 
     gitleaks_findings = run_gitleaks_scan()
 
-    ai_findings, ai_review_ok = review_staged(timeout=timeout)
+    if ai_enabled:
+        ai_findings, ai_review_ok = review_staged(timeout=timeout)
+    else:
+        ai_findings, ai_review_ok = [], True
 
     all_findings = remove_dup(gitleaks_findings + ai_findings)
 
@@ -68,6 +74,9 @@ def scan(
 
         print(finding_output)
         print()
+
+    if not ai_enabled:
+        print("[yellow]AI review disabled by config.[/yellow]")
 
     print("[red]Commit blocked by CommitGate.[/red]")
     raise typer.Exit(code=1)
