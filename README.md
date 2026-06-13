@@ -7,7 +7,7 @@ vulnerabilities are found.
 | Layer | Tool | Catches |
 |-------|------|---------|
 | Deterministic | [**Gitleaks**](https://github.com/gitleaks/gitleaks) | Known secret shapes — API keys, tokens, passwords matching standard patterns |
-| Semantic | **AI reviewer** ([DeepSeek](https://www.deepseek.com/)) | What regex misses — internal URLs, non-standard credentials, `eval`/`os.system`, data-leaking logic |
+| Semantic | **AI reviewer** (OpenAI-compatible — DeepSeek, OpenAI, Gemini, or Groq) | What regex misses — internal URLs, non-standard credentials, `eval`/`os.system`, data-leaking logic |
 
 Findings from both layers are merged, deduplicated, and fed into a **decision engine** that rules `allow / warn / block`. A Rich terminal report explains why.
 
@@ -48,7 +48,11 @@ git commit
   - Windows: `winget install gitleaks`
   - macOS: `brew install gitleaks`
   - Linux: download the release binary and place it on your `PATH`
-- **DeepSeek API key** — required for the AI reviewer (`platform.deepseek.com`)
+- **AI API key** — required for the AI reviewer. Supported providers (pick one):
+  - [Groq](https://console.groq.com) — free tier available, recommended for getting started
+  - [DeepSeek](https://platform.deepseek.com) — low cost
+  - [OpenAI](https://platform.openai.com)
+  - [Gemini](https://aistudio.google.com)
 
 ---
 
@@ -65,8 +69,9 @@ pip install git+https://github.com/ductrl/CommitGate.git
 Create a `.env` file in the root of **your project** (not CommitGate's repo):
 
 ```env
-# Required — AI reviewer
-DEEPSEEK_API_KEY=sk-your-key-here
+# Required — AI reviewer (one key for whichever provider you set in commitgate.yaml)
+AI_KEY=your-api-key-here
+# Free option: get a Groq key at https://console.groq.com, then set provider: groq in commitgate.yaml
 
 # Optional — AI review timeout in seconds (default: 20)
 # COMMITGATE_AI_TIMEOUT=20
@@ -96,6 +101,8 @@ The generated `commitgate.yaml` looks like this — edit it to match your needs:
 ```yaml
 ai:
   enabled: true          # set to false to run gitleaks only (no API key needed)
+  # Options: openai, deepseek, gemini, groq
+  # Tip: groq offers a free API key — get one at https://console.groq.com
   provider: deepseek
   timeout: 20            # seconds before AI review is abandoned (fail closed → warn)
 policy:
@@ -212,7 +219,7 @@ Build a **CommitGate Security Gate** dashboard with these searches:
 | `cli.py` | Typer commands: `scan`, `install-hook`, `init`, `version` |
 | `git_utils.py` | Staged files/diff, is-git-repo, hook install |
 | `gitleaks_runner.py` | Run gitleaks binary, parse findings into dicts |
-| `ai_reviewer.py` | LLM semantic review (DeepSeek), returns `(findings, ok)` |
+| `ai_reviewer.py` | LLM semantic review (OpenAI-compatible — provider set in `commitgate.yaml`), returns `(findings, ok)` |
 | `decision_engine.py` | Merge findings → `allow / warn / block` (reads `commitgate.yaml` thresholds) |
 | `report_generator.py` | Format findings for Rich terminal output |
 | `splunk_logger.py` | POST audit event to Splunk HEC after every scan |
@@ -224,6 +231,6 @@ See `docs/architecture.md` for the full architecture and `CONTRIBUTING.md` for t
 
 ## Data Privacy
 
-When `ai.enabled: true`, CommitGate sends your **staged code diffs to the DeepSeek API** (an external service). Do not use the AI reviewer on confidential or proprietary code without your organization's authorization. Set `ai.enabled: false` to run gitleaks only — no data leaves your machine.
+When `ai.enabled: true`, CommitGate sends your **staged code diffs to an external AI provider** (whichever you configure in `commitgate.yaml`). Do not use the AI reviewer on confidential or proprietary code without your organization's authorization. Set `ai.enabled: false` to run gitleaks only — no data leaves your machine.
 
-DeepSeek is used for the current demo. Local LLM support (Ollama) and self-hosted Splunk are on the roadmap so CommitGate can operate fully air-gapped.
+Supported providers: **Groq**, **DeepSeek**, **OpenAI**, **Gemini**. Local LLM support (Ollama) and self-hosted Splunk are on the roadmap so CommitGate can operate fully air-gapped.

@@ -6,7 +6,7 @@
 - **CLI:** Typer
 - **Terminal output:** Rich
 - **Config:** PyYAML (`commitgate.yaml`)
-- **LLM HTTP:** requests (DeepSeek)
+- **LLM HTTP:** requests (OpenAI-compatible — Groq, DeepSeek, OpenAI, Gemini)
 - **Secret scanning:** Gitleaks — external binary invoked via `subprocess`
 
 ## Orchestration Flow
@@ -51,11 +51,21 @@ Locates the gitleaks binary on PATH, runs it per staged file, and parses the JSO
 Rich terminal output. Formats findings with severity colouring, deduplicates overlapping gitleaks and AI findings.
 
 #### `ai_reviewer.py`
-Semantic review of the staged diff via an LLM.
-- `review_staged()` — main entry; pulls staged diff from git, calls the LLM, returns `(findings, ok)`
+Semantic review of the staged diff via an OpenAI-compatible LLM. Provider is set in `commitgate.yaml` (`ai.provider`); the API key is read from the `AI_KEY` environment variable.
+
+Supported providers and their defaults:
+
+| Provider | Model |
+|----------|-------|
+| `groq` | `openai/gpt-oss-120b` |
+| `deepseek` | `deepseek-v4-flash` |
+| `openai` | `gpt-5.4-mini` |
+| `gemini` | `gemini-2.5-flash` |
+
+- `review_staged()` — main entry; loads config, selects provider from `PROVIDER_CONFIG`, pulls staged diff from git, calls the LLM, returns `(findings, ok)`
 - `review(diff, staged_files)` — core orchestrator
 - `build_prompt(diff)` — wraps the diff into the security-review prompt
-- `call_llm(...)` — DeepSeek `/chat/completions` call with SSE streaming
+- `call_llm(...)` — OpenAI-compatible `/chat/completions` call with SSE streaming
 - `parse_findings(raw, staged_files)` — validates model output into finding dicts; returns `(findings, parse_ok)`
 
 `ok=False` on any LLM error or timeout — the caller warns and continues on the deterministic gate only. Never raises.
