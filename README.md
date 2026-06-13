@@ -15,56 +15,47 @@ Findings from both layers are merged, deduplicated, and fed into a **decision en
 
 ## Table of Contents
 
-- [How it works](#how-it-works)
-- [Prerequisites](#prerequisites)
 - [Setup](#setup)
 - [Usage](#usage)
+- [How it works](#how-it-works)
 - [Splunk Setup](#splunk-setup-optional)
 - [Module map](#module-map)
 - [Data Privacy](#data-privacy)
 
 ---
 
-## How it works
+## Setup
 
-```
-git commit
-  └─ .git/hooks/pre-commit  →  commitgate scan
-        ├─ gitleaks_runner    scan staged diff for known secret patterns
-        ├─ ai_reviewer        LLM semantic review for issues regex can't catch
-        ├─ decision_engine    merge findings → allow / warn / block
-        ├─ report_generator   Rich terminal output
-        ├─ splunk_logger      audit event to Splunk HEC (optional)
-        └─ exit code          block → non-zero (stops commit) · allow/warn → 0
-```
+### 1. Install prerequisites
 
----
-
-## Prerequisites
+Install these on your machine **before** installing CommitGate:
 
 - **Python ≥ 3.10**
 - **Git**
-- **Gitleaks** — external binary, installed separately:
+- **Gitleaks** — an external binary that must be installed separately (it is *not* pulled in by `pip`):
   - Windows: `winget install gitleaks`
   - macOS: `brew install gitleaks`
   - Linux: download the release binary and place it on your `PATH`
-- **AI API key** — required for the AI reviewer. Supported providers (pick one):
+
+  Confirm it's on your `PATH` before continuing:
+
+  ```bash
+  gitleaks version
+  ```
+
+- **AI API key** — required for the AI reviewer (pick one provider; you'll add the key to your `.env` in step 3):
   - [Groq](https://console.groq.com) — free tier available, recommended for getting started
   - [DeepSeek](https://platform.deepseek.com) — low cost
   - [OpenAI](https://platform.openai.com)
   - [Gemini](https://aistudio.google.com)
 
----
-
-## Setup
-
-### 1. Install CommitGate
+### 2. Install CommitGate
 
 ```bash
 pip install git+https://github.com/ductrl/CommitGate.git
 ```
 
-### 2. Configure environment variables
+### 3. Configure environment variables
 
 Create a `.env` file in the root of **your project** (not CommitGate's repo):
 
@@ -84,7 +75,7 @@ AI_KEY=your-api-key-here
 
 **`.env` should be gitignored — your keys should never enter source or git history.**
 
-### 3. Initialize CommitGate
+### 4. Initialize CommitGate
 
 Run this inside the repo you want to protect:
 
@@ -110,6 +101,8 @@ policy:
 reporting:
   show_suggestions: true # include AI fix suggestions in the terminal report
 ```
+
+**Commit `commitgate.yaml`** so your whole team shares the same gate policy — it contains no secrets.
 
 ---
 
@@ -139,6 +132,21 @@ Once the hook is installed, just commit normally. CommitGate intercepts the comm
 git add <file>
 commitgate scan
 git restore --staged <file>
+```
+
+---
+
+## How it works
+
+```
+git commit
+  └─ .git/hooks/pre-commit  →  commitgate scan
+        ├─ gitleaks_runner    scan staged diff for known secret patterns
+        ├─ ai_reviewer        LLM semantic review for issues regex can't catch
+        ├─ decision_engine    merge findings → allow / warn / block
+        ├─ report_generator   Rich terminal output
+        ├─ splunk_logger      audit event to Splunk HEC (optional)
+        └─ exit code          block → non-zero (stops commit) · allow/warn → 0
 ```
 
 ---
