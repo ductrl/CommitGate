@@ -207,16 +207,16 @@ Build a **CommitGate Security Gate** dashboard with these searches:
 
 ## Module map
 
-| Module | Role | Status |
-|--------|------|--------|
-| `cli.py` | Typer commands: `scan`, `install-hook`, `version` | Working |
-| `git_utils.py` | Staged files/diff, is-git-repo, hook install | Working |
-| `gitleaks_runner.py` | Run gitleaks binary, parse findings into dicts | Working |
-| `ai_reviewer.py` | LLM semantic review (DeepSeek), returns `(findings, ok)` | Working |
-| `decision_engine.py` | Merge findings → `allow / warn / block` | Working |
-| `report_generator.py` | Format findings for Rich terminal output | Working |
-| `splunk_logger.py` | POST audit event to Splunk HEC after every scan | Working |
-| `config.py` | Load `.commitgate.yml` settings and defaults | Planned |
+| Module | Role |
+|--------|------|
+| `cli.py` | Typer commands: `scan`, `install-hook`, `init`, `version` |
+| `git_utils.py` | Staged files/diff, is-git-repo, hook install |
+| `gitleaks_runner.py` | Run gitleaks binary, parse findings into dicts |
+| `ai_reviewer.py` | LLM semantic review (DeepSeek), returns `(findings, ok)` |
+| `decision_engine.py` | Merge findings → `allow / warn / block` (reads `commitgate.yaml` thresholds) |
+| `report_generator.py` | Format findings for Rich terminal output |
+| `splunk_logger.py` | POST audit event to Splunk HEC after every scan |
+| `config.py` | Generate and load `commitgate.yaml`, merge with built-in defaults |
 
 See `docs/architecture.md` for the full architecture and `CONTRIBUTING.md` for the branch/PR workflow.
 
