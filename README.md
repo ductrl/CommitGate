@@ -87,7 +87,7 @@ DEEPSEEK_API_KEY=sk-your-key-here
 # Optional — Splunk audit logging (see Splunk Setup below)
 # SPLUNK_HEC_TOKEN=your-hec-token-here
 # SPLUNK_HEC_URL=https://prd-p-yourinstance.splunkcloud.com:8088/services/collector/event
-# SPLUNK_VERIFY_SSL=false
+# SPLUNK_CA_BUNDLE=/path/to/splunk-ca.pem   # for self-signed certs — see Splunk Setup
 ```
 
 `.env` is gitignored — your keys never enter source or git history.
@@ -128,21 +128,14 @@ commitgate scan
 git restore --staged <file>
 ```
 
-### Test samples
+### Manual scan (testing)
 
-Pre-made files in `tests/samples/` let you test each scanner:
-
-| File | Tests |
-|------|-------|
-| `gitleaks_secrets.py` | Gitleaks catches Stripe + Slack tokens |
-| `hardcoded_creds_nonstandard.py` | AI catches non-standard credentials |
-| `semantic_vulns.py` | AI catches `os.system`, `eval`, internal URL |
-| `sql_and_data_leak.py` | AI catches SQL injection + password logging |
+Stage any file with a planted secret or vulnerability, run a scan, then unstage:
 
 ```bash
-git add tests/samples/semantic_vulns.py
+git add <file-with-issue>
 commitgate scan
-git restore --staged tests/samples/semantic_vulns.py
+git restore --staged <file-with-issue>
 ```
 
 ---
@@ -170,28 +163,50 @@ In your Splunk UI:
 4. **Index:** `main` → **Review** → **Submit**
 5. Copy the token shown on the confirmation screen
 
-### 4. Add to your `.env`
+### 4. Export the Splunk certificate
+
+Splunk Cloud free trial uses a self-signed certificate on port 8088. Export it once so CommitGate can verify the connection securely:
+
+**Windows (PowerShell):**
+```powershell
+python -c "
+import ssl, socket
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
+with socket.create_connection(('prd-p-yourinstance.splunkcloud.com', 8088)) as sock:
+    with ctx.wrap_socket(sock, server_hostname='prd-p-yourinstance.splunkcloud.com') as s:
+        pem = ssl.DER_cert_to_PEM_cert(s.getpeercert(binary_form=True))
+        open('splunk-ca.pem', 'w').write(pem)
+print('Saved splunk-ca.pem')
+"
+```
+
+Replace `prd-p-yourinstance` with your actual Splunk hostname. The file `splunk-ca.pem` is gitignored — it stays local to your machine.
+
+> If your Splunk instance has a proper CA-signed certificate (e.g. paid account), skip this step and omit `SPLUNK_CA_BUNDLE` from your `.env`.
+
+### 5. Add to your `.env`
 
 ```env
 SPLUNK_HEC_TOKEN=your-token-here
 SPLUNK_HEC_URL=https://prd-p-yourinstance.splunkcloud.com:8088/services/collector/event
-SPLUNK_VERIFY_SSL=false
+SPLUNK_CA_BUNDLE=/path/to/your/splunk-ca.pem
 ```
 
-> `SPLUNK_VERIFY_SSL=false` is required for Splunk Cloud free trial — it uses a
-> self-signed certificate on port 8088.
+### 6. Verify the connection
 
-### 5. Verify the connection
+Stage any file and run a manual scan:
 
-```powershell
-$headers = @{ Authorization = "Splunk $env:SPLUNK_HEC_TOKEN" }
-$body = '{"event":{"test":"hello"},"sourcetype":"commitgate:audit"}'
-Invoke-RestMethod -Uri $env:SPLUNK_HEC_URL -Method Post -Headers $headers -Body $body
+```bash
+git add <any-staged-file>
+commitgate scan
+git restore --staged <any-staged-file>
 ```
 
-Expected response: `text=Success code=0`
+If the audit event reaches Splunk you'll see no yellow "Splunk audit log failed" warning in the output.
 
-### 6. View events in Splunk
+### 7. View events in Splunk
 
 **Search & Reporting** → run:
 
