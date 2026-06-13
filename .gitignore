@@ -221,5 +221,7 @@ __marimo__/
 commitgate/gitleaks-report.json
 .DS_Store
 .vscode/
+fake-codes
+splunk-ca.pem
 fake-codes/
 commitgate.yaml

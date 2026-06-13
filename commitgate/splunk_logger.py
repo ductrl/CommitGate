@@ -39,13 +39,12 @@ def log_decision(decision: dict) -> None:
         "sourcetype": "commitgate:audit",
     }
 
+    # Splunk Cloud free trial issues certs without the Authority Key Identifier extension
+    # required by Python 3.10+, making SSL verification impossible on the free plan.
+    # Set SPLUNK_VERIFY_SSL=false for free trial; leave unset (defaults true) for paid accounts.
     verify_ssl = os.environ.get("SPLUNK_VERIFY_SSL", "true").lower() != "false"
 
     try:
-        import urllib3
-        if not verify_ssl:
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
         resp = requests.post(
             url,
             headers={"Authorization": f"Splunk {token}"},

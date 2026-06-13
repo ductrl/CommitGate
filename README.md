@@ -87,7 +87,7 @@ DEEPSEEK_API_KEY=sk-your-key-here
 # Optional — Splunk audit logging (see Splunk Setup below)
 # SPLUNK_HEC_TOKEN=your-hec-token-here
 # SPLUNK_HEC_URL=https://prd-p-yourinstance.splunkcloud.com:8088/services/collector/event
-# SPLUNK_VERIFY_SSL=false
+# SPLUNK_VERIFY_SSL=false                   # required for Splunk Cloud free trial
 ```
 
 `.env` is gitignored — your keys never enter source or git history.
@@ -128,21 +128,14 @@ commitgate scan
 git restore --staged <file>
 ```
 
-### Test samples
+### Manual scan (testing)
 
-Pre-made files in `tests/samples/` let you test each scanner:
-
-| File | Tests |
-|------|-------|
-| `gitleaks_secrets.py` | Gitleaks catches Stripe + Slack tokens |
-| `hardcoded_creds_nonstandard.py` | AI catches non-standard credentials |
-| `semantic_vulns.py` | AI catches `os.system`, `eval`, internal URL |
-| `sql_and_data_leak.py` | AI catches SQL injection + password logging |
+Stage any file with a planted secret or vulnerability, run a scan, then unstage:
 
 ```bash
-git add tests/samples/semantic_vulns.py
+git add <file-with-issue>
 commitgate scan
-git restore --staged tests/samples/semantic_vulns.py
+git restore --staged <file-with-issue>
 ```
 
 ---
@@ -178,20 +171,21 @@ SPLUNK_HEC_URL=https://prd-p-yourinstance.splunkcloud.com:8088/services/collecto
 SPLUNK_VERIFY_SSL=false
 ```
 
-> `SPLUNK_VERIFY_SSL=false` is required for Splunk Cloud free trial — it uses a
-> self-signed certificate on port 8088.
+> **Why `SPLUNK_VERIFY_SSL=false`?** Splunk Cloud free trial issues certificates missing the Authority Key Identifier extension required by Python 3.10+, making SSL verification impossible on the free plan. Paid Splunk accounts use properly signed certificates and do not need this setting.
 
 ### 5. Verify the connection
 
-```powershell
-$headers = @{ Authorization = "Splunk $env:SPLUNK_HEC_TOKEN" }
-$body = '{"event":{"test":"hello"},"sourcetype":"commitgate:audit"}'
-Invoke-RestMethod -Uri $env:SPLUNK_HEC_URL -Method Post -Headers $headers -Body $body
+Stage any file and run a manual scan:
+
+```bash
+git add <any-staged-file>
+commitgate scan
+git restore --staged <any-staged-file>
 ```
 
-Expected response: `text=Success code=0`
+If the audit event reaches Splunk you'll see no yellow "Splunk audit log failed" warning in the output.
 
-### 6. View events in Splunk
+### 7. View events in Splunk
 
 **Search & Reporting** → run:
 
