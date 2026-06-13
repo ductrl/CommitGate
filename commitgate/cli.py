@@ -5,6 +5,7 @@ from commitgate.git_utils import install_pre_commit_hook
 from commitgate.gitleaks_runner import run_gitleaks_scan
 from commitgate.report_generator import format_finding, severity_color, remove_dup
 from commitgate.ai_reviewer import review_staged
+from commitgate.config import create_default_config, load_config
 
 app = typer.Typer()
 
@@ -18,9 +19,14 @@ def scan(
     )
 ):
     # TODO: Move format_finding to report_generator
-    # TODO: We can think about adding a configuration files for user next (to set things like timeout)
-    # TODO: Maybe also change the finding color based on severity
     # TODO: Add a skip option to commit without having CommitGate scan it
+
+    # Load configs from commitgate.yaml
+
+    config = load_config()
+
+    timeout = config["ai"]["timeout"]
+    show_suggestions = config["reporting"]["show_suggestions"]
 
     gitleaks_findings = run_gitleaks_scan()
 
@@ -56,7 +62,7 @@ def scan(
         finding_output: str
         
         if finding.get("suggestion"):
-            finding_output = format_finding(finding=finding, include_suggestion=True)
+            finding_output = format_finding(finding=finding, include_suggestion=show_suggestions)
         else:
             finding_output = format_finding(finding=finding)
 
@@ -71,6 +77,14 @@ def install_hook():
     hook_path = install_pre_commit_hook()
 
     print(f"Installed pre-commit hook at {hook_path}")
+
+@app.command()
+def init():
+    config_file = create_default_config()
+    hook_path = install_pre_commit_hook()
+
+    print(f"[green]Created config file:[/green] {config_file}")
+    print(f"[green]Installed pre-commit hook:[/green] {hook_path}")
 
 @app.command()
 def version():
