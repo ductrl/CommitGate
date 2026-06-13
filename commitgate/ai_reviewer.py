@@ -23,7 +23,7 @@ Design notes:
   caller fail closed (warn) instead of mistaking a blind review for a clean one. The
   deterministic gitleaks gate is the floor; the AI only ever *adds* findings and never
   crashes a commit on its own.
-- **API key from env only:** `DEEPSEEK_API_KEY`, never config/source.
+- **API key from env only:** `AI_KEY`, never config/source.
 """
 
 from __future__ import annotations
@@ -37,26 +37,54 @@ from typing import List, Optional, Tuple
 
 import requests
 
-# DeepSeek
-DEFAULT_BASE_URL = "https://api.deepseek.com"
-DEFAULT_MODEL = "deepseek-v4-flash"
 DEFAULT_TIMEOUT = 20        # seconds; override with COMMITGATE_AI_TIMEOUT env var
 DEFAULT_MAX_TOKENS = 2048
 CONNECT_TIMEOUT = 5         # separate connect timeout — fail fast if network is down
-                                
-# Turn off V4's default thinking mode — too slow/costly for a per-commit hook
-DEEPSEEK_THINKING_DISABLED = {"thinking": {"type": "disabled"}}
 
+DEFAULT_PROVIDER = "deepseek"
 
-# Local LLM via Ollama 
-# Ollama serves an OpenAI-compatible endpoint, so call_llm works unchanged; only these
-# defaults differ (no API key, no thinking toggle). Uncomment + verify the tag to enable.
-# LOCAL_BASE_URL = "http://localhost:11434/v1"
-# LOCAL_MODEL = "gemma3"          # placeholder — confirm the real Ollama tag
-# LOCAL_EXTRA_BODY = None         # local has no DeepSeek-style thinking field
+PROVIDER_CONFIG = {
+    "openai": {
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-5.4-mini",
+        "extra_body": None,
+        "max_tokens_key": "max_completion_tokens",  # GPT-5.x dropped max_tokens
+    },
+    "deepseek": {
+        "base_url": "https://api.deepseek.com",
+        "model": "deepseek-v4-flash",
+        "extra_body": {"thinking": {"type": "disabled"}},  # V4 defaults thinking ON — too slow for a hook
+    },
+    "gemini": {
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "model": "gemini-2.5-flash",
+        "extra_body": None,
+    },
+    "groq": {
+        "base_url": "https://api.groq.com/openai/v1",
+        "model": "openai/gpt-oss-120b",
+        "extra_body": None,
+    },
+}
 
 VALID_SEVERITIES = {"low", "medium", "high", "critical"}
 VALID_CONFIDENCE = {"low", "medium", "high"}
+
+# Characters an LLM may emit that Windows cp1252 cannot encode — map to ASCII equivalents.
+_UNICODE_SANITIZE = str.maketrans({
+    "‑": "-",   # non-breaking hyphen
+    "–": "-",   # en dash
+    "—": "-",   # em dash
+    "‘": "'",   # left single quote
+    "’": "'",   # right single quote
+    "“": '"',   # left double quote
+    "”": '"',   # right double quote
+    "…": "...", # ellipsis
+})
+
+
+def _sanitize(s: str) -> str:
+    return s.translate(_UNICODE_SANITIZE)
 
 SYSTEM_PROMPT = """\
 You are a security code reviewer for a git pre-commit gate. You are given a STAGED DIFF.
@@ -72,7 +100,7 @@ The "file" must be a path that appears in the diff. If you find nothing, return 
 """
 
 
-def deepseek_api_key() -> Optional[str]:
+def ai_api_key() -> Optional[str]:
     """Read the key from the environment, loading a local .env first if present.
     Never read it from config/source."""
     try:
@@ -80,7 +108,7 @@ def deepseek_api_key() -> Optional[str]:
         load_dotenv()  # populate os.environ from .env (does NOT override real env vars)
     except ImportError:
         pass
-    return os.environ.get("DEEPSEEK_API_KEY")
+    return os.environ.get("AI_KEY")
 
 
 def _ai_timeout() -> int:
@@ -113,6 +141,7 @@ def call_llm(
     timeout: int = DEFAULT_TIMEOUT,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     extra_body: Optional[dict] = None,
+    max_tokens_key: str = "max_tokens",
 ) -> str:
     """Single provider-agnostic call to an OpenAI-compatible /chat/completions endpoint.
 
@@ -132,7 +161,7 @@ def call_llm(
             {"role": "user", "content": prompt},
         ],
         "temperature": 0,
-        "max_tokens": max_tokens,
+        max_tokens_key: max_tokens,
         "stream": True,
     }
     if extra_body:                      # provider-specific knobs, e.g. DeepSeek thinking toggle
@@ -268,21 +297,21 @@ def parse_findings(raw: str, staged_files: List[str]) -> Tuple[List[dict], bool]
         # core keys — always present, mirroring gitleaks_runner's dict
         finding: dict = {
             "source": "AI Review",
-            "rule": str(item.get("rule") or item.get("category") or "ai-finding"),
+            "rule": _sanitize(str(item.get("rule") or item.get("category") or "ai-finding")),
             "severity": severity,
             "file": file,
             "start_line": _as_int(item.get("start_line")),
             "end_line": _as_int(item.get("end_line")),
-            "description": str(item.get("description", "")),
+            "description": _sanitize(str(item.get("description", ""))),
         }
 
         # AI-only extras — included only when the model actually supplied them
         secret = item.get("secret")
         if secret:
-            finding["secret"] = secret
+            finding["secret"] = _sanitize(str(secret))
         category = item.get("category")
         if category:
-            finding["category"] = str(category).replace("-", " ").capitalize()
+            finding["category"] = _sanitize(str(category).replace("-", " ").capitalize())
         confidence = item.get("confidence")
         if confidence is not None:
             confidence = str(confidence).lower()
@@ -290,7 +319,7 @@ def parse_findings(raw: str, staged_files: List[str]) -> Tuple[List[dict], bool]
                 finding["confidence"] = confidence
         suggestion = item.get("suggestion")
         if suggestion:
-            finding["suggestion"] = str(suggestion)
+            finding["suggestion"] = _sanitize(str(suggestion))
 
         findings.append(finding)
     return findings, parse_ok
@@ -300,12 +329,13 @@ def review(
     diff: str,
     staged_files: List[str],
     *,
-    base_url: str = DEFAULT_BASE_URL,
-    model: str = DEFAULT_MODEL,
+    base_url: str = PROVIDER_CONFIG[DEFAULT_PROVIDER]["base_url"],
+    model: str = PROVIDER_CONFIG[DEFAULT_PROVIDER]["model"],
     api_key: Optional[str] = None,
     timeout: int = DEFAULT_TIMEOUT,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    extra_body: Optional[dict] = DEEPSEEK_THINKING_DISABLED,
+    extra_body: Optional[dict] = PROVIDER_CONFIG[DEFAULT_PROVIDER]["extra_body"],
+    max_tokens_key: str = "max_tokens",
 ) -> Tuple[List[dict], bool]:
     """Run the AI review over a staged diff. Returns `(findings, ok)`, never raises.
 
@@ -320,26 +350,42 @@ def review(
         return [], True   # nothing to review is not a failure
     prompt = build_prompt(diff)
     try:
-        raw = call_llm(base_url, model, api_key, prompt, timeout, max_tokens, extra_body)
+        raw = call_llm(base_url, model, api_key, prompt, timeout, max_tokens, extra_body, max_tokens_key)
     except Exception as exc:  # noqa: BLE001 - fail-safe must catch everything
-        print(
-            f"[commitgate] AI review skipped ({exc}); deterministic gate unaffected.",
-            file=sys.stderr,
-        )
+        msg = str(exc)
+        if len(msg) > 120:
+            msg = msg[:120] + "..."
+        print(f"[commitgate] AI review skipped ({msg}); deterministic gate unaffected.", file=sys.stderr)
         return [], False
     return parse_findings(raw, staged_files)
 
 
 def review_staged(*, timeout: Optional[int] = None) -> Tuple[List[dict], bool]:
     """Convenience entry: pull the staged diff/files from git and the key from env,
-    then review with DeepSeek defaults. Returns `(findings, ok)` like `review`. For
-    manual runs/demos; the real CLI wiring lives in the orchestration once
-    decision_engine lands. Timeout defaults to COMMITGATE_AI_TIMEOUT env var or 20s."""
+    then route to the configured provider. Returns `(findings, ok)` like `review`.
+    Provider is read from commitgate.yaml (`ai.provider`). Timeout defaults to
+    COMMITGATE_AI_TIMEOUT env var or 20s."""
     from commitgate.git_utils import get_staged_diff, get_staged_files
+    from commitgate.config import load_config
+
+    config = load_config()
+    provider = config["ai"].get("provider", DEFAULT_PROVIDER)
+
+    if provider not in PROVIDER_CONFIG:
+        raise ValueError(
+            f"Unknown provider '{provider}' in commitgate.yaml. "
+            f"Valid options: {', '.join(sorted(PROVIDER_CONFIG))}"
+        )
+
+    pconf = PROVIDER_CONFIG[provider]
 
     return review(
         get_staged_diff(),
         get_staged_files(),
-        api_key=deepseek_api_key(),
+        base_url=pconf["base_url"],
+        model=pconf["model"],
+        api_key=ai_api_key(),
+        extra_body=pconf["extra_body"],
+        max_tokens_key=pconf.get("max_tokens_key", "max_tokens"),
         timeout=timeout if timeout is not None else _ai_timeout(),
     )
