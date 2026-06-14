@@ -45,22 +45,26 @@ DEFAULT_PROVIDER = "deepseek"
 
 PROVIDER_CONFIG = {
     "openai": {
+        "label": "OpenAI",          # shown in finding source, e.g. "AI Review (OpenAI)"
         "base_url": "https://api.openai.com/v1",
         "model": "gpt-5.4-mini",
         "extra_body": None,
         "max_tokens_key": "max_completion_tokens",  # GPT-5.x dropped max_tokens
     },
     "deepseek": {
+        "label": "DeepSeek",
         "base_url": "https://api.deepseek.com",
         "model": "deepseek-v4-flash",
         "extra_body": {"thinking": {"type": "disabled"}},  # V4 defaults thinking ON — too slow for a hook
     },
     "gemini": {
+        "label": "Gemini",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
         "model": "gemini-2.5-flash",
         "extra_body": None,
     },
     "groq": {
+        "label": "Groq",
         "base_url": "https://api.groq.com/openai/v1",
         "model": "openai/gpt-oss-120b",
         "extra_body": None,
@@ -260,8 +264,13 @@ def _salvage_objects(text: str) -> list:
     return objects
 
 
-def parse_findings(raw: str, staged_files: List[str]) -> Tuple[List[dict], bool]:
+def parse_findings(
+    raw: str, staged_files: List[str], provider_label: Optional[str] = None
+) -> Tuple[List[dict], bool]:
     """Turn a raw model response into validated finding dicts plus a parse-ok flag.
+
+    `provider_label` names the model that produced the findings (e.g. "DeepSeek"); when
+    given it is shown in each finding's source as `AI Review (DeepSeek)`.
 
     Returns `(findings, parse_ok)`. `parse_ok` answers "did we get a usable response?" —
     True whenever the JSON parsed, *including* a clean empty `[]` or a response whose
@@ -282,6 +291,7 @@ def parse_findings(raw: str, staged_files: List[str]) -> Tuple[List[dict], bool]
         items = _salvage_objects(raw)   # response likely truncated — recover what completed
         parse_ok = bool(items)          # salvaged something = partial success; nothing = unparseable
 
+    source = f"AI Review ({provider_label})" if provider_label else "AI Review"
     staged = set(staged_files)
     findings: List[dict] = []
     for item in items:
@@ -296,7 +306,7 @@ def parse_findings(raw: str, staged_files: List[str]) -> Tuple[List[dict], bool]
 
         # core keys — always present, mirroring gitleaks_runner's dict
         finding: dict = {
-            "source": "AI Review",
+            "source": source,
             "rule": _sanitize(str(item.get("rule") or item.get("category") or "ai-finding")),
             "severity": severity,
             "file": file,
@@ -336,6 +346,7 @@ def review(
     max_tokens: int = DEFAULT_MAX_TOKENS,
     extra_body: Optional[dict] = PROVIDER_CONFIG[DEFAULT_PROVIDER]["extra_body"],
     max_tokens_key: str = "max_tokens",
+    provider_label: Optional[str] = None,
 ) -> Tuple[List[dict], bool]:
     """Run the AI review over a staged diff. Returns `(findings, ok)`, never raises.
 
@@ -357,7 +368,7 @@ def review(
             msg = msg[:120] + "..."
         print(f"[commitgate] AI review skipped ({msg}); deterministic gate unaffected.", file=sys.stderr)
         return [], False
-    return parse_findings(raw, staged_files)
+    return parse_findings(raw, staged_files, provider_label)
 
 
 def review_staged(*, timeout: Optional[int] = None) -> Tuple[List[dict], bool]:
@@ -388,4 +399,5 @@ def review_staged(*, timeout: Optional[int] = None) -> Tuple[List[dict], bool]:
         extra_body=pconf["extra_body"],
         max_tokens_key=pconf.get("max_tokens_key", "max_tokens"),
         timeout=timeout if timeout is not None else _ai_timeout(),
+        provider_label=pconf.get("label", provider),
     )
