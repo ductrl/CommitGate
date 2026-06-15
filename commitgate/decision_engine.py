@@ -11,7 +11,6 @@ def decide(findings: List[dict]) -> dict:
 
     config = load_config()
     block_threshold = SEVERITY_RANK.get(config["policy"]["block_severity"], 2)
-    warn_threshold = max(0, block_threshold - 1)
 
     max_sev = max(SEVERITY_RANK.get(f.get("severity", "low"), 0) for f in findings)
     n = len(findings)
@@ -22,14 +21,9 @@ def decide(findings: List[dict]) -> dict:
             "findings": findings,
             "reason": f"{n} finding(s) at or above block threshold.",
         }
-    if max_sev >= warn_threshold:
-        return {
-            "action": "warn",
-            "findings": findings,
-            "reason": f"{n} finding(s) at or above warn threshold.",
-        }
+    # Any finding below the block threshold warns: commit proceeds, dev still sees it.
     return {
-        "action": "allow",
+        "action": "warn",
         "findings": findings,
-        "reason": f"{n} low-severity finding(s), below warn threshold.",
+        "reason": f"{n} finding(s) below block threshold.",
     }
