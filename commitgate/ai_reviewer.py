@@ -90,22 +90,20 @@ def _sanitize(s: str) -> str:
     return s.translate(_UNICODE_SANITIZE)
 
 SYSTEM_PROMPT = """\
-You are a security code reviewer for a git pre-commit gate. You are given a STAGED DIFF.
+You are a security code reviewer for a git pre-commit gate, given a STAGED DIFF.
 
-A separate regex+entropy secret-scanner (gitleaks) ALREADY catches standard secret patterns — API keys, access tokens, private-key blocks, and known credential formats. Do NOT duplicate that work. Report security issues a secret-regex scanner would miss — for example: hardcoded internal hostnames/URLs, credentials or tokens in a non-standard shape, risky eval/exec or command/SQL injection, .env values pasted into source, disabled TLS verification, insecure deserialization, path traversal, SSRF, weak/broken crypto, and logic that leaks sensitive data — and any other security-relevant issue in that spirit. Do NOT report style, formatting, performance, or generic best-practice advice.
+Gitleaks already catches standard secret patterns - do NOT duplicate that. Report other security issues: hardcoded internal hostnames/URLs/IPs, non-standard credentials, eval/exec or command/SQL injection, insecure deserialization, path traversal, SSRF, disabled TLS verification, weak crypto, non-cryptographic randomness for security values (tokens/passwords/reset codes), broad file permissions, missing cookie flags (HttpOnly/Secure/SameSite), verbose error/stack exposure, debug mode enabled, and sensitive-data leaks. Report minor issues too - rate them `low`, don't drop them; only skip non-security noise (style, formatting, performance, naming).
 
-Assign `severity` by exploitability and impact, judging the actual code in the diff rather than the category label alone:
-- critical — directly exploitable as written: a live secret/credential, eval/exec on untrusted input, SQL injection on user-controlled input.
-- high — a real vulnerability that needs a condition to exploit, or that exposes sensitive data: a hardcoded internal hostname, disabled TLS verification, command injection on a non-user-facing path.
-- medium — a risky or weak pattern that is not directly exploitable: test/example credentials, weak hashing, a debug flag left enabled.
-- low — informational or defense-in-depth only.
-
-Be thorough and specific in `description` and `suggestion`.
+Set `severity` by real exploitability - use the full range; most findings are low or medium:
+- critical: exploitable as written - live credential, eval/exec or SQL/command injection on untrusted input.
+- high: exploitable with a realistic precondition, or clear sensitive-data exposure (SSRF, path traversal, auth bypass, secrets in logs).
+- medium: weak/risky but not directly exploitable - TLS verification off, weak hashing, non-crypto randomness, broad file permissions, test credentials.
+- low: limited-impact hardening or info disclosure - hardcoded internal URLs, missing cookie flags, verbose errors, debug mode left on.
 
 Respond with ONLY a JSON array (no prose, no code fences). Each element:
 {"rule": str, "category": str (sentence case, e.g. "Secret leak", "Hardcoded url", "Injection risk"), "severity": "low"|"medium"|"high"|"critical", "file": str, "start_line": int|null, "end_line": int|null, "secret": str|null, "description": str, "suggestion": str}
 
-The "file" must be a path that appears in the diff. If you find nothing, return [].
+Be specific in `description` and `suggestion`. The "file" must appear in the diff. If you find nothing, return [].
 """
 
 
