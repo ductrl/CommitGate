@@ -44,6 +44,11 @@ def log_decision(decision: dict) -> None:
     # Set SPLUNK_VERIFY_SSL=false for free trial; leave unset (defaults true) for paid accounts.
     verify_ssl = os.environ.get("SPLUNK_VERIFY_SSL", "true").lower() != "false"
 
+    if not verify_ssl:
+        # Verification intentionally off (see above) — mute the per-request urllib3 warning
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
     try:
         resp = requests.post(
             url,
