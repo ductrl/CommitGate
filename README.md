@@ -1,8 +1,7 @@
 # CommitGate
+An AI-powered security gate for Git. Every time you run `git commit`, CommitGate scans the staged diff for potential vulnerabilities and **blocks the commit** before secrets or risky code ever reach your history.
 
-An AI-powered security agent for Git users that checks staged files for potential vulnerabilities
-every time the git commit command is ran and prevent the changes from being committed if
-vulnerabilities are found. 
+It runs two scanners over your staged changes and merges their findings:
 
 | Layer | Tool | Catches |
 |-------|------|---------|
@@ -21,6 +20,7 @@ Findings from both layers are merged, deduplicated, and fed into a **decision en
 - [Splunk Setup](#splunk-setup-optional)
 - [Module map](#module-map)
 - [Data Privacy](#data-privacy)
+- [License](#license)
 
 ---
 
@@ -212,11 +212,11 @@ Build a **CommitGate Security Gate** dashboard with these searches:
 
 | Panel | Type | Search |
 |-------|------|--------|
-| Decisions over time | Line chart | `sourcetype="commitgate:audit" \| timechart count by action` |
+| Decisions over time | Line chart | `sourcetype="commitgate:audit" action!="allow" \| timechart count by action` |
 | Blocks today | Single value | `sourcetype="commitgate:audit" action=block \| stats count as Blocked` |
 | Top triggered categories | Bar chart | `sourcetype="commitgate:audit" \| stats count by findings{}.category \| sort -count` |
 | Findings by severity | Pie chart | `sourcetype="commitgate:audit" \| stats count by findings{}.severity` |
-| Recent blocked commits | Table | `sourcetype="commitgate:audit" action=block \| table _time reason findings_count \| sort -_time` |
+| Recent blocked commits | Table | `sourcetype="commitgate:audit" \| table _time reason findings_count \| sort -_time` |
 
 ---
 
@@ -240,5 +240,16 @@ See `docs/architecture.md` for the full architecture and `CONTRIBUTING.md` for t
 ## Data Privacy
 
 When `ai.enabled: true`, CommitGate sends your **staged code diffs to an external AI provider** (whichever you configure in `commitgate.yaml`). Do not use the AI reviewer on confidential or proprietary code without your organization's authorization. Set `ai.enabled: false` to run gitleaks only — no data leaves your machine.
+
+Supported providers: **Groq**, **DeepSeek**, **OpenAI**, **Gemini**. Local LLM support (Ollama) and self-hosted Splunk are on the roadmap so CommitGate can operate fully air-gapped.
+
+---
+
+## License
+
+[MIT](LICENSE) © 2026 Mike Ly
+
+CommitGate is free to use, modify, and distribute under the terms of the MIT License.
+alse` to run gitleaks only — no data leaves your machine.
 
 Supported providers: **Groq**, **DeepSeek**, **OpenAI**, **Gemini**. Local LLM support (Ollama) and self-hosted Splunk are on the roadmap so CommitGate can operate fully air-gapped.
