@@ -214,7 +214,7 @@ Build a **CommitGate Security Gate** dashboard with these searches:
 |-------|------|--------|
 | Decisions over time | Line chart | `sourcetype="commitgate:audit" \| timechart count by action` |
 | Blocks today | Single value | `sourcetype="commitgate:audit" action=block \| stats count as Blocked` |
-| Top triggered rules | Bar chart | `sourcetype="commitgate:audit" \| stats count by findings{}.rule \| sort -count \| head 10` |
+| Top triggered categories | Bar chart | `sourcetype="commitgate:audit" \| stats count by findings{}.category \| sort -count` |
 | Findings by severity | Pie chart | `sourcetype="commitgate:audit" \| stats count by findings{}.severity` |
 | Recent blocked commits | Table | `sourcetype="commitgate:audit" action=block \| table _time reason findings_count \| sort -_time` |
 
