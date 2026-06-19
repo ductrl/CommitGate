@@ -12,6 +12,14 @@ Findings from both layers are merged, deduplicated, and fed into a **decision en
 
 ---
 
+## Demo
+
+![CommitGate Demo](assets/demo.gif)
+
+*CommitGate blocking a vulnerable commit before it reaches Git history.*
+
+---
+
 ## Table of Contents
 
 - [Setup](#setup)
