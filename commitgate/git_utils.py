@@ -1,5 +1,7 @@
 import subprocess
 from pathlib import Path
+from typing import Literal
+import questionary
 
 COMMITGATE_HOOK_BLOCK = "\n\n# CommitGate hook\ncommitgate scan\n"
 
@@ -67,8 +69,20 @@ def _write_commitgate_hook(hook_path: Path) -> None:
     )
     hook_path.chmod(0o755)
 
+def prompt_for_hook_type() -> str:
+    answer = questionary.select(
+        "Which Git hook do you want to install?",
+        choices=["pre-commit", "pre-push"],
+        default="pre-commit",
+    ).ask()
 
-def install_pre_commit_hook() -> Path:
+    if answer is None:
+        raise KeyboardInterrupt("Hook selection cancelled.")
+    
+    return answer
+
+
+def install_git_hook(hook_type: str | None = None) -> Path:
     """
     Install a Git pre-commit hook that runs CommitGate before each commit.
 
@@ -78,7 +92,10 @@ def install_pre_commit_hook() -> Path:
     if not is_git_repo():
         raise RuntimeError("Not inside a Git repository.")
     
-    hook_path = Path(".git/hooks/pre-commit")
+    if hook_type is None:
+        hook_type = prompt_for_hook_type()
+    
+    hook_path = Path(".git/hooks") / hook_type
 
     # We should handle 3 cases:
     # 1. There is no pre-commit hook installed, so we create a new file

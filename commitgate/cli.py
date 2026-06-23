@@ -2,7 +2,7 @@ import typer
 from rich import print
 import os
 
-from commitgate.git_utils import install_pre_commit_hook
+from commitgate.git_utils import install_git_hook
 from commitgate.gitleaks_runner import run_gitleaks_scan
 from commitgate.report_generator import format_finding, severity_color, remove_dup
 from commitgate.ai_reviewer import review_staged
@@ -99,14 +99,14 @@ def scan(
     
 @app.command()
 def install_hook():
-    hook_path = install_pre_commit_hook()
+    hook_path = install_git_hook()
 
     print(f"Installed pre-commit hook at {hook_path}")
 
 @app.command()
 def init():
     config_file = create_default_config()
-    hook_path = install_pre_commit_hook()
+    hook_path = install_git_hook()
 
     print(f"[green]Created config file:[/green] {config_file}")
     print(f"[green]Installed pre-commit hook:[/green] {hook_path}")

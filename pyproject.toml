@@ -15,6 +15,7 @@ dependencies = [
     "requests",
     "pyyaml",
     "python-dotenv",
+    "questionary",
 ]
 
 [project.optional-dependencies]
