@@ -67,9 +67,9 @@ commitgate scan --hook-type {hook_type}
 # <<< CommitGate end <<<
 """
 
-def _write_commitgate_hook(hook_path: Path) -> None:
+def _write_commitgate_hook(hook_type: str, hook_path: Path) -> None:
     hook_path.write_text(
-        f"#!/bin/sh{build_commitgate_hook_block}",
+        f"#!/bin/sh{build_commitgate_hook_block(hook_type=hook_type)}",
         encoding="utf-8",
     )
     hook_path.chmod(0o755)
@@ -109,14 +109,14 @@ def install_git_hook(hook_type: str | None = None) -> Path:
 
     # CASE 1: There is no pre-commit hook installed
     if not hook_path.exists():
-        _write_commitgate_hook(hook_path=hook_path)
+        _write_commitgate_hook(hook_type=hook_type, hook_path=hook_path)
         return hook_path
 
     existing_content = hook_path.read_text(encoding="utf-8")
 
     # EDGE CASE: If pre-commit hook exists but is empty
     if not existing_content.strip():
-        _write_commitgate_hook(hook_path=hook_path)
+        _write_commitgate_hook(hook_type=hook_type, hook_path=hook_path)
         return hook_path
 
     # CASE 3: CommitGate hook is already installed
