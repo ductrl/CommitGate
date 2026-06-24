@@ -3,8 +3,6 @@ from pathlib import Path
 from typing import Literal
 import questionary
 
-COMMITGATE_HOOK_BLOCK = "\n\n# CommitGate hook\ncommitgate scan\n"
-
 SHELL_SHEBANGS = {
     "#!/bin/sh",
     "#!/bin/bash",
@@ -62,9 +60,16 @@ def _is_shell_hook(content: str) -> bool:
 
     return lines[0].strip() in SHELL_SHEBANGS
 
+def build_commitgate_hook_block(hook_type: str) -> str:
+    return f"""
+# >>> CommitGate start >>>
+commitgate scan --hook-type {hook_type}
+# <<< CommitGate end <<<
+"""
+
 def _write_commitgate_hook(hook_path: Path) -> None:
     hook_path.write_text(
-        f"#!/bin/sh{COMMITGATE_HOOK_BLOCK}",
+        f"#!/bin/sh{build_commitgate_hook_block}",
         encoding="utf-8",
     )
     hook_path.chmod(0o755)
@@ -129,7 +134,7 @@ def install_git_hook(hook_type: str | None = None) -> Path:
         )
 
     hook_path.write_text(
-        existing_content.rstrip() + COMMITGATE_HOOK_BLOCK,
+        existing_content.rstrip() + build_commitgate_hook_block(hook_type=hook_type),
         encoding="utf-8",
     )
     hook_path.chmod(0o755)
