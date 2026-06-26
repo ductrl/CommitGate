@@ -2,7 +2,7 @@ import typer
 from rich import print
 import os
 
-from commitgate.git_utils import install_git_hook
+from commitgate.git_utils import install_git_hook, get_staged_diff, get_pre_push_diff
 from commitgate.gitleaks_runner import run_gitleaks_scan
 from commitgate.report_generator import format_finding, severity_color, remove_dup
 from commitgate.ai_reviewer import review_staged
@@ -14,6 +14,11 @@ app = typer.Typer()
 
 @app.command()
 def scan(
+    hook_type: str = typer.Option(
+        "pre-commit",
+        "--hook-type",
+        help="Git hook type: pre-commit or pre-push",
+    ),
     timeout: int = typer.Option(
         20,
         "--timeout",
@@ -21,8 +26,12 @@ def scan(
         help="Maximum time (seconds) allowed for AI review.",
     )
 ):
-    # TODO: Move format_finding to report_generator
-    # TODO: Add a skip option to commit without having CommitGate scan it
+    if hook_type == "pre-commit":
+        diff = get_staged_diff()
+    elif hook_type == "pre-push":
+        diff = get_pre_push_diff()
+    else:
+        raise ValueError(f"Invalid hook type: {hook_type}")
 
     # HANDLE SKIP
     skip = os.environ.get("SKIP", "")

@@ -40,6 +40,9 @@ def get_staged_diff() -> str:
 
     return res.stdout
 
+def get_pre_push_diff() -> str:
+    raise NotImplementedError("Pre-push diff retrieval is not implemented yet.")
+
 def is_git_repo() -> bool:
     """
     Return True if the current directory is inside a Git repository, False otherwise.
