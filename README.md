@@ -12,6 +12,14 @@ Findings from both layers are merged, deduplicated, and fed into a **decision en
 
 ---
 
+## Demo
+
+![CommitGate Demo](assets/demo.gif)
+
+*CommitGate blocking a vulnerable commit before it reaches Git history.*
+
+---
+
 ## Table of Contents
 
 - [Setup](#setup)
@@ -250,6 +258,3 @@ Supported providers: **Groq**, **DeepSeek**, **OpenAI**, **Gemini**. Local LLM s
 [MIT](LICENSE) © 2026 Mike Ly
 
 CommitGate is free to use, modify, and distribute under the terms of the MIT License.
-alse` to run gitleaks only — no data leaves your machine.
-
-Supported providers: **Groq**, **DeepSeek**, **OpenAI**, **Gemini**. Local LLM support (Ollama) and self-hosted Splunk are on the roadmap so CommitGate can operate fully air-gapped.
