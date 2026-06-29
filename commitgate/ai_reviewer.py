@@ -333,30 +333,61 @@ def parse_findings(
     return findings, parse_ok
 
 
+def _resolve_provider(provider: Optional[str] = None) -> dict:
+    """Return the PROVIDER_CONFIG entry for `provider`; when None, read `ai.provider`
+    from commitgate.yaml. Raises ValueError on an unknown provider so a misconfig fails loud, 
+    not by silently hitting the wrong endpoint."""
+    if provider is None:
+        from commitgate.config import load_config
+        provider = load_config()["ai"].get("provider", DEFAULT_PROVIDER)
+    if provider not in PROVIDER_CONFIG:
+        raise ValueError(
+            f"Unknown provider '{provider}' in commitgate.yaml. "
+            f"Valid options: {', '.join(sorted(PROVIDER_CONFIG))}"
+        )
+    return PROVIDER_CONFIG[provider]
+
+
 def review(
     diff: str,
     staged_files: List[str],
     *,
-    base_url: str = PROVIDER_CONFIG[DEFAULT_PROVIDER]["base_url"],
-    model: str = PROVIDER_CONFIG[DEFAULT_PROVIDER]["model"],
+    provider: Optional[str] = None,
+    base_url: Optional[str] = None,
+    model: Optional[str] = None,
     api_key: Optional[str] = None,
     timeout: int = DEFAULT_TIMEOUT,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    extra_body: Optional[dict] = PROVIDER_CONFIG[DEFAULT_PROVIDER]["extra_body"],
-    max_tokens_key: str = "max_tokens",
+    extra_body: Optional[dict] = None,
+    max_tokens_key: Optional[str] = None,
     provider_label: Optional[str] = None,
 ) -> Tuple[List[dict], bool]:
-    """Run the AI review over a staged diff. Returns `(findings, ok)`, never raises.
+    """Run the AI review over a diff. Returns `(findings, ok)`; never raises on an LLM error.
 
     `ok` reports whether the AI layer actually completed a review, so the caller can fail
     closed: an empty diff or a clean pass is `([], True)` (nothing to warn about), but a
     dead/timed-out call or an unparseable response is `(..., False)` — the decision engine
-    should then warn rather than treat "no findings" as all-clear. Fail-safe: any LLM
-    error/timeout warns to stderr and returns `([], False)` so the deterministic gate
-    still decides alone.
+    should then warn rather than treat "no findings" as all-clear.
     """
     if not diff or not diff.strip():
         return [], True   # nothing to review is not a failure
+
+    # Fill any unset endpoint field from the configured provider
+    if base_url is None or model is None:
+        pconf = _resolve_provider(provider)
+        base_url = base_url or pconf["base_url"]
+        model = model or pconf["model"]
+        if extra_body is None:
+            extra_body = pconf["extra_body"]
+        if max_tokens_key is None:
+            max_tokens_key = pconf.get("max_tokens_key", "max_tokens")
+        if provider_label is None:
+            provider_label = pconf.get("label")
+    if max_tokens_key is None:
+        max_tokens_key = "max_tokens"
+    if api_key is None:
+        api_key = ai_api_key()      # load AI_KEY from env
+
     prompt = build_prompt(diff)
     try:
         raw = call_llm(base_url, model, api_key, prompt, timeout, max_tokens, extra_body, max_tokens_key)
@@ -370,32 +401,12 @@ def review(
 
 
 def review_staged(*, timeout: Optional[int] = None) -> Tuple[List[dict], bool]:
-    """Convenience entry: pull the staged diff/files from git and the key from env,
-    then route to the configured provider. Returns `(findings, ok)` like `review`.
-    Provider is read from commitgate.yaml (`ai.provider`). Timeout defaults to
-    COMMITGATE_AI_TIMEOUT env var or 20s."""
+    """Convenience entry: pull the staged diff/files from git, then review. Provider and
+    key are resolved inside `review` (config + env). Returns `(findings, ok)`. Timeout
+    defaults to the COMMITGATE_AI_TIMEOUT env var or 20s."""
     from commitgate.git_utils import get_staged_diff, get_staged_files
-    from commitgate.config import load_config
-
-    config = load_config()
-    provider = config["ai"].get("provider", DEFAULT_PROVIDER)
-
-    if provider not in PROVIDER_CONFIG:
-        raise ValueError(
-            f"Unknown provider '{provider}' in commitgate.yaml. "
-            f"Valid options: {', '.join(sorted(PROVIDER_CONFIG))}"
-        )
-
-    pconf = PROVIDER_CONFIG[provider]
-
     return review(
         get_staged_diff(),
         get_staged_files(),
-        base_url=pconf["base_url"],
-        model=pconf["model"],
-        api_key=ai_api_key(),
-        extra_body=pconf["extra_body"],
-        max_tokens_key=pconf.get("max_tokens_key", "max_tokens"),
         timeout=timeout if timeout is not None else _ai_timeout(),
-        provider_label=pconf.get("label", provider),
     )

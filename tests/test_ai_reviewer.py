@@ -1,8 +1,8 @@
 """Tests for the AI reviewer. The HTTP call is always mocked — never hit a real API.
 
 Findings are plain dicts matching gitleaks_runner's keys (source, rule, severity, file,
-start_line, end_line, description) plus optional AI extras (secret/category/confidence/
-suggestion), present only when the model supplied them.
+start_line, end_line, description) plus optional AI extras (secret/category/suggestion),
+present only when the model supplied them.
 """
 
 import json
@@ -61,10 +61,16 @@ def test_review_happy_path_parses_findings():
     assert len(findings) == 1
     f = findings[0]
     assert isinstance(f, dict)
-    assert f["source"] == "AI Review"
+    assert f["source"] == "AI Review (DeepSeek)"   # provider auto-resolved from config
     assert f["severity"] == "high"          # normalized to lowercase
     assert f["file"] == "app/config.py"
     assert f["start_line"] == 12
+
+
+def test_source_includes_provider_label():
+    raw = '[{"file": "app/db.py", "severity": "low", "rule": "r", "description": "m"}]'
+    findings, _ = parse_findings(raw, STAGED, provider_label="DeepSeek")
+    assert findings[0]["source"] == "AI Review (DeepSeek)"
 
 
 # --- parsing robustness -------------------------------------------------------
@@ -113,7 +119,6 @@ def test_parse_extracts_rich_fields():
         "rule": "command-injection",
         "category": "injection",
         "severity": "critical",
-        "confidence": "HIGH",
         "file": "app/db.py",
         "start_line": 4,
         "end_line": 6,
@@ -123,7 +128,6 @@ def test_parse_extracts_rich_fields():
     findings, _ = parse_findings(raw, STAGED)
     f = findings[0]
     assert f["category"] == "Injection"        # normalized to sentence case
-    assert f["confidence"] == "high"          # normalized to lowercase
     assert f["end_line"] == 6
     assert f["suggestion"].startswith("Use subprocess")
 
@@ -149,16 +153,6 @@ def test_parse_normalizes_category_to_sentence_case():
     findings, _ = parse_findings(raw, STAGED)
     assert findings[0]["category"] == "Secret leak"
     assert findings[1]["category"] == "Hardcoded url"
-
-
-def test_parse_omits_unknown_confidence():
-    raw = json.dumps([{
-        "file": "app/db.py", "severity": "low", "rule": "r", "description": "m",
-        "confidence": "pretty sure",
-    }])
-    findings, _ = parse_findings(raw, STAGED)
-    # unknown confidence is dropped entirely — the optional key is simply absent
-    assert "confidence" not in findings[0]
 
 
 def test_parse_omits_absent_optional_fields():
@@ -218,6 +212,26 @@ def test_review_targets_v4_flash_with_thinking_disabled():
     assert captured["json"]["model"] == "deepseek-v4-flash"
     assert captured["json"]["thinking"] == {"type": "disabled"}
     assert captured["json"]["stream"] is True
+
+
+def test_review_self_wires_provider_and_key_when_omitted():
+    # The pre-push case: caller hands over a diff but no api_key/provider. review() must
+    # resolve the provider from commitgate.yaml and pull the key from env (no 401).
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, **kwargs):
+        captured["url"] = url
+        captured["headers"] = headers
+        return FakeResponse('[{"file": "app/db.py", "severity": "low", "rule": "r", "description": "m"}]')
+
+    with patch.object(ai_reviewer, "ai_api_key", return_value="env-key"), \
+         patch.object(ai_reviewer.requests, "post", side_effect=fake_post):
+        findings, ok = review("some diff", STAGED)   # no api_key, no provider
+
+    assert ok is True
+    assert captured["url"] == "https://api.deepseek.com/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer env-key"
+    assert findings[0]["source"] == "AI Review (DeepSeek)"
 
 
 def test_call_llm_hits_chat_completions_with_bearer():
