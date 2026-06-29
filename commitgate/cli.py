@@ -28,7 +28,6 @@ def scan(
     )
 ):
     print("Running CommitGate")
-    print(f"Hook type: {hook_type}")
 
     if hook_type == "pre-commit":
         diff, file_paths = get_staged_diff(), get_staged_files()

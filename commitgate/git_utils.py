@@ -1,8 +1,8 @@
 import subprocess
 from pathlib import Path
-# from typing import Literal
 import questionary
 import sys
+import re
 
 SHELL_SHEBANGS = {
     "#!/bin/sh",
@@ -11,6 +11,7 @@ SHELL_SHEBANGS = {
     "#!/usr/bin/env bash",
 }
 
+GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 ZERO_SHA = "0" * 40
 
 # The SHA of Git's empty tree object. This is helpful when we need to
@@ -112,7 +113,13 @@ def _get_pre_push_ranges() -> list[tuple[str, str]]:
     ranges : list[tuple[str, str]] = []
 
     for line in lines:
+        if len(line.split()) != 4:
+            continue
+
         local_ref, local_sha, remote_ref, remote_sha = line.split()
+
+        if not (_is_valid_sha(local_sha) and _is_valid_sha(remote_sha)):
+            continue
 
         # EGDE CASE: When a remote branch is being deleted -> There is no code being pushed
         if local_sha == ZERO_SHA:
@@ -154,6 +161,9 @@ def _is_shell_hook(content: str) -> bool:
         return False
 
     return lines[0].strip() in SHELL_SHEBANGS
+
+def _is_valid_sha(value: str) -> bool:
+    return bool(GIT_SHA_RE.fullmatch(value))
 
 def build_commitgate_hook_block(hook_type: str) -> str:
     return f"""
