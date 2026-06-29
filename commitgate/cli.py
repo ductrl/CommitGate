@@ -2,16 +2,17 @@ import typer
 from rich import print
 import os
 
-from commitgate.git_utils import install_git_hook, get_staged_diff, get_pre_push_diff
+from commitgate.git_utils import install_git_hook, get_staged_diff, get_staged_files, get_pre_push_changes, PrePushHookError
 from commitgate.gitleaks_runner import run_gitleaks_scan
 from commitgate.report_generator import format_finding, severity_color, remove_dup
-from commitgate.ai_reviewer import review_staged
+from commitgate.ai_reviewer import review
 from commitgate.config import create_default_config, load_config
 from commitgate.decision_engine import decide
 from commitgate.splunk_logger import log_decision
 
 app = typer.Typer()
 
+# TODO: Refactor scan to improve readability 
 @app.command()
 def scan(
     hook_type: str = typer.Option(
@@ -26,10 +27,19 @@ def scan(
         help="Maximum time (seconds) allowed for AI review.",
     )
 ):
+    print("Running CommitGate")
+    print(f"Hook type: {hook_type}")
+
     if hook_type == "pre-commit":
-        diff = get_staged_diff()
+        diff, file_paths = get_staged_diff(), get_staged_files()
     elif hook_type == "pre-push":
-        diff = get_pre_push_diff()
+        try:
+            diff, file_paths = get_pre_push_changes()
+        except PrePushHookError:
+            print(
+                "[red]Error: CommitGate pre-push mode must be run from a Git pre-push hook.[/red]\n"
+            )
+            raise typer.Exit(1)
     else:
         raise ValueError(f"Invalid hook type: {hook_type}")
 
@@ -49,10 +59,10 @@ def scan(
 
     # SECURITY SCAN
 
-    gitleaks_findings = run_gitleaks_scan()
+    gitleaks_findings = run_gitleaks_scan(file_paths=file_paths)
 
     if ai_enabled:
-        ai_findings, ai_review_ok = review_staged(timeout=timeout)
+        ai_findings, ai_review_ok = review(diff=diff, staged_files=file_paths, timeout=timeout)
     else:
         ai_findings, ai_review_ok = [], True
 
@@ -103,7 +113,11 @@ def scan(
         print("[yellow]CommitGate: warnings found. Commit proceeding.[/yellow]")
         raise typer.Exit(code=0)
 
-    print("[red]Commit blocked by CommitGate.[/red]")
+    if hook_type == "pre-push":
+        print("[red]Push blocked by CommitGate.[/red]")
+    else:
+        print("[red]Commit blocked by CommitGate.[/red]")
+
     raise typer.Exit(code=1)
     
 @app.command()

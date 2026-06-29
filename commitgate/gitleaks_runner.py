@@ -72,22 +72,23 @@ def parse_gitleaks_findings(report_path: str | Path) -> list[dict]:
     
     return findings
 
-def run_gitleaks_scan() -> list[dict]:
+def run_gitleaks_scan(file_paths: list[str]) -> list[dict]:
     """
-    Scan staged files with Gitleaks.
+    Scan the specified files with Gitleaks.
+
+    Args:
+        file_paths: Paths of files to scan.
 
     Returns:
-        List of CommitGate findings - a dictionary that includes description, start_line, end_line, start_column, end_column, and file.
+        List of CommitGate findings.
     """
 
     if not is_gitleaks_installed():
         raise RuntimeError("Gitleaks is not installed. Please install it before running CommitGate")
 
-    staged_files = get_staged_files()
-
     findings = []
 
-    for file_path in staged_files:
+    for file_path in file_paths:
         path = Path(file_path)
 
         # if path doesn't exist for path is not a file then we'll skip it
