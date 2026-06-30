@@ -12,7 +12,6 @@ from commitgate.splunk_logger import log_decision
 
 app = typer.Typer()
 
-# TODO: Refactor scan to improve readability 
 @app.command()
 def scan(
     hook_type: str = typer.Option(
@@ -27,8 +26,6 @@ def scan(
         help="Maximum time (seconds) allowed for AI review.",
     )
 ):
-    print("Running CommitGate")
-
     if hook_type == "pre-commit":
         diff, file_paths = get_staged_diff(), get_staged_files()
     elif hook_type == "pre-push":
@@ -123,7 +120,7 @@ def scan(
 def install_hook():
     hook_path = install_git_hook()
 
-    print(f"Installed pre-commit hook at {hook_path}")
+    print(f"Installed {hook_path.name} hook at {hook_path}")
 
 @app.command()
 def init():
@@ -131,7 +128,7 @@ def init():
     hook_path = install_git_hook()
 
     print(f"[green]Created config file:[/green] {config_file}")
-    print(f"[green]Installed pre-commit hook:[/green] {hook_path}")
+    print(f"[green]Installed {hook_path.name} hook:[/green] {hook_path}")
 
 @app.command()
 def version():

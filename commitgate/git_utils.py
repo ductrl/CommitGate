@@ -121,7 +121,7 @@ def _get_pre_push_ranges() -> list[tuple[str, str]]:
         if not (_is_valid_sha(local_sha) and _is_valid_sha(remote_sha)):
             continue
 
-        # EGDE CASE: When a remote branch is being deleted -> There is no code being pushed
+        # EDGE CASE: When a remote branch is being deleted -> There is no code being pushed
         if local_sha == ZERO_SHA:
             continue
 
