@@ -1,5 +1,5 @@
 # CommitGate
-An AI-powered security gate for Git. Every time you run `git commit`, CommitGate scans the staged diff for potential vulnerabilities and **blocks the commit** before secrets or risky code ever reach your history.
+An AI-powered security gate for Git. On every `git commit` — or every `git push` — CommitGate scans your changes for potential vulnerabilities and **blocks them** before secrets or risky code ever reach your history.
 
 It runs two scanners over your staged changes and merges their findings:
 
@@ -93,7 +93,7 @@ commitgate init
 
 This does two things at once:
 - Creates a `commitgate.yaml` config file in the repo root
-- Writes `.git/hooks/pre-commit` so `commitgate scan` fires automatically on every commit
+- Installs a Git hook so CommitGate scans automatically. It asks whether you want a **pre-commit** hook (scan on every commit) or a **pre-push** hook (scan on every push) — see [Pre-commit vs pre-push](#pre-commit-vs-pre-push)
 
 The generated `commitgate.yaml` looks like this — edit it to match your needs:
 
@@ -117,14 +117,25 @@ reporting:
 ## Usage
 
 ```bash
-commitgate init          # create commitgate.yaml + install pre-commit hook
-commitgate scan          # scan staged files (runs automatically via hook)
-commitgate install-hook  # install pre-commit hook only (no config file)
+commitgate init          # create commitgate.yaml + install a hook (asks: pre-commit or pre-push)
+commitgate scan          # scan your changes (runs automatically via the installed hook)
+commitgate install-hook  # install a hook only, no config file (asks: pre-commit or pre-push)
 commitgate version       # print version
 SKIP=all git commit ...  # bypass CommitGate for a single commit
 ```
 
-Once the hook is installed, just commit normally. CommitGate intercepts the commit, scans the diff, and either lets it through or blocks it with a report.
+Once the hook is installed, just commit (or push) normally. CommitGate intercepts the action, scans the changes, and either lets it through or blocks it with a report.
+
+### Pre-commit vs pre-push
+
+`commitgate init` and `commitgate install-hook` ask which Git hook to install:
+
+| Hook | Fires on | Scans | Use when |
+|------|----------|-------|----------|
+| **pre-commit** | every `git commit` | the staged diff | you want fast, incremental feedback as you work — the default |
+| **pre-push** | every `git push` | every commit in the push range, not just the latest | you want a final gate before code leaves your machine — it catches a secret buried in an earlier local commit that a per-commit scan might have missed |
+
+A blocked **commit** and a blocked **push** both stop with a non-zero exit code. Install both hooks if you want defense in depth.
 
 ### Decision outcomes
 
@@ -146,15 +157,18 @@ git restore --staged <file>
 
 ## How it works
 
+Both hooks feed the same scan pipeline — they differ only in what changes they hand it: the staged diff (pre-commit) or the full push range (pre-push).
+
 ```
-git commit
-  └─ .git/hooks/pre-commit  →  commitgate scan
-        ├─ gitleaks_runner    scan staged diff for known secret patterns
+git commit → .git/hooks/pre-commit   (staged diff)
+git push   → .git/hooks/pre-push     (every commit in the push range)
+        →  commitgate scan
+        ├─ gitleaks_runner    scan the changes for known secret patterns
         ├─ ai_reviewer        LLM semantic review for issues regex can't catch
         ├─ decision_engine    merge findings → allow / warn / block
         ├─ report_generator   Rich terminal output
         ├─ splunk_logger      audit event to Splunk HEC (optional)
-        └─ exit code          block → non-zero (stops commit) · allow/warn → 0
+        └─ exit code          block → non-zero (stops the commit/push) · allow/warn → 0
 ```
 
 ---
@@ -233,7 +247,7 @@ Build a **CommitGate Security Gate** dashboard with these searches:
 | Module | Role |
 |--------|------|
 | `cli.py` | Typer commands: `scan`, `install-hook`, `init`, `version` |
-| `git_utils.py` | Staged files/diff, is-git-repo, hook install |
+| `git_utils.py` | Git ops via subprocess: staged files/diff, pre-push change range (read from the hook's stdin), is-git-repo, install pre-commit/pre-push hook |
 | `gitleaks_runner.py` | Run gitleaks binary, parse findings into dicts |
 | `ai_reviewer.py` | LLM semantic review (OpenAI-compatible — provider set in `commitgate.yaml`), returns `(findings, ok)` |
 | `decision_engine.py` | Merge findings → `allow / warn / block` (reads `commitgate.yaml` thresholds) |
