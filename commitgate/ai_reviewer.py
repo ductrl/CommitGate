@@ -15,9 +15,10 @@ Gitleaks dicts are a subset of this (no `severity`/`source`); the AI adds the se
 severity the decision engine needs.
 
 Design notes:
-- **Provider-agnostic client.** `call_llm` takes `(base_url, model, api_key, ...)` and
-  speaks the OpenAI-compatible `/chat/completions` API. DeepSeek is the default today;
-  a local Ollama model drops in later by swapping the config triple (~90% reuse).
+- **Two transports.** `call_llm` speaks HTTP to an OpenAI-compatible `/chat/completions`
+  endpoint (DeepSeek default). `call_cli` instead shells out to a local coding-agent CLI
+  (e.g. Claude Code) that runs on the user's own subscription -- no API key. `review`
+  dispatches on the provider's `kind`; both feed the same `parse_findings`.
 - **Least-privilege:** we send only the staged diff, never the whole repo.
 - **Fail-safe:** any LLM error/timeout -> warn + return `([], False)`. The `ok` flag lets the
   caller fail closed (warn) instead of mistaking a blind review for a clean one. The
@@ -31,18 +32,26 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import time
 from typing import List, Optional, Tuple
 
 import requests
 
-DEFAULT_TIMEOUT = 20        # seconds; override with COMMITGATE_AI_TIMEOUT env var
+DEFAULT_TIMEOUT = 20        # seconds; suits the fast HTTP providers. override w/ COMMITGATE_AI_TIMEOUT
 DEFAULT_MAX_TOKENS = 2048
 CONNECT_TIMEOUT = 5         # separate connect timeout — fail fast if network is down
+CLI_MIN_TIMEOUT = 30        # CLI agents cold-start a process first (~6s typical w/ thinking off,
+                            # up to ~20s cold) — floor the HTTP-tuned 20s default so a cold start
+                            # isn't spuriously skipped. It's a max-wait cap, not added latency.
 
 DEFAULT_PROVIDER = "deepseek"
 
+# Providers are either `kind: "http"` (default -- OpenAI-compatible endpoint, needs AI_KEY)
+# or `kind: "cli"` (shell out to a local coding-agent CLI on the user's own subscription,
+# no API key). Switch provider by editing `ai.provider` in commitgate.yaml -- no code change.
 PROVIDER_CONFIG = {
     "openai": {
         "label": "OpenAI",          # shown in finding source, e.g. "AI Review (OpenAI)"
@@ -68,6 +77,25 @@ PROVIDER_CONFIG = {
         "base_url": "https://api.groq.com/openai/v1",
         "model": "openai/gpt-oss-120b",
         "extra_body": None,
+    },
+    "claude-cli": {
+        "kind": "cli",
+        "label": "Claude Code",
+        "command": "claude",
+        # -p            : non-interactive print; json envelope so we can pull the answer cleanly.
+        # --safe-mode   : skip CLAUDE.md/MCP/plugins/hooks discovery
+        # --tools ""    : no tools -> can't read unstaged files (least-privilege) + faster
+        # --model haiku : the task is small; bump to sonnet for a deeper (slower) review
+        # --max-turns 1 : single shot
+        "args": [
+            "-p", "--output-format", "json",
+            "--model", "haiku",
+            "--safe-mode",
+            "--tools", "",
+            "--max-turns", "1",
+        ],
+        "result_key": "result",
+        "env": {"MAX_THINKING_TOKENS": "0"},
     },
 }
 
@@ -201,6 +229,81 @@ def call_llm(
             except (json.JSONDecodeError, KeyError, IndexError):
                 continue
     return buffer
+
+
+def _cli_argv(exe: str, args: List[str]) -> List[str]:
+    """Build the argv for a CLI provider.
+
+    On Windows, npm installs `claude` as a `claude.cmd` shim, which CreateProcess can't
+    launch directly -- route those through `cmd /c`. This is NOT shell=True: every token
+    stays a separate argv element (the prompt goes via stdin, never the command line).
+    """
+    if os.name == "nt" and exe.lower().endswith((".cmd", ".bat")):
+        return ["cmd", "/c", exe, *args]
+    return [exe, *args]
+
+
+def _unwrap_cli_output(stdout: str, result_key: str = "result") -> str:
+    """Pull the model's text answer out of a CLI's JSON envelope.
+
+    Claude Code's `--output-format json` prints one JSON object whose `result` field holds
+    the assistant's final text (which is our findings JSON). If stdout isn't that envelope,
+    return it verbatim and let `parse_findings`' tolerant extraction handle it.
+    """
+    text = (stdout or "").strip()
+    if not text:
+        return ""
+    try:
+        envelope = json.loads(text)
+    except json.JSONDecodeError:
+        return text   # not the JSON envelope -- let parse_findings salvage
+    if isinstance(envelope, dict):
+        if envelope.get("is_error"):
+            raise RuntimeError(f"CLI reported an error: {str(envelope.get(result_key))[:200]}")
+        return str(envelope.get(result_key, ""))
+    return text
+
+
+def call_cli(
+    command: str,
+    args: List[str],
+    prompt: str,
+    timeout: int = DEFAULT_TIMEOUT,
+    result_key: str = "result",
+    env: Optional[dict] = None,
+) -> str:
+    """Run a local coding-agent CLI (e.g. Claude Code) as the LLM transport.
+
+    Unlike `call_llm`, this makes no HTTP call of its own: it shells out to an already
+    installed and logged-in CLI, which reaches its provider under the user's own
+    subscription -- so no API key is needed. The prompt is piped on stdin; stdout is the
+    CLI's JSON envelope, from which we take the model's text answer (`result_key`). `env`
+    is merged onto the current environment for the child (e.g. MAX_THINKING_TOKENS=0 to
+    stop the agent burning latency on hidden reasoning). Raises on a missing binary,
+    non-zero exit, or timeout; `review`'s fail-safe handles it.
+    """
+    exe = shutil.which(command)
+    if exe is None:
+        raise RuntimeError(
+            f"'{command}' not found on PATH -- install it, or set a different ai.provider "
+            f"in commitgate.yaml"
+        )
+    try:
+        proc = subprocess.run(
+            _cli_argv(exe, args),
+            input=prompt,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=timeout,
+            env={**os.environ, **env} if env else None,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"'{command}' timed out after {timeout}s")
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(f"'{command}' exited {proc.returncode}: {detail[:200]}")
+    return _unwrap_cli_output(proc.stdout, result_key)
 
 
 def _extract_json(raw: str):
@@ -348,6 +451,15 @@ def _resolve_provider(provider: Optional[str] = None) -> dict:
     return PROVIDER_CONFIG[provider]
 
 
+def _warn_ai_skipped(exc: Exception) -> None:
+    """Print the fail-safe warning for a dead/absent AI review. The deterministic gitleaks
+    gate is the floor, so a skipped AI check warns but never blocks or crashes the commit."""
+    msg = str(exc)
+    if len(msg) > 160:
+        msg = msg[:160] + "..."
+    print(f"[commitgate] AI review skipped ({msg}); deterministic gate unaffected.", file=sys.stderr)
+
+
 def review(
     diff: str,
     staged_files: List[str],
@@ -366,36 +478,56 @@ def review(
 
     `ok` reports whether the AI layer actually completed a review, so the caller can fail
     closed: an empty diff or a clean pass is `([], True)` (nothing to warn about), but a
-    dead/timed-out call or an unparseable response is `(..., False)` — the decision engine
-    should then warn rather than treat "no findings" as all-clear.
+    dead/timed-out call, a missing CLI, or an unparseable response is `(..., False)` — the
+    decision engine should then warn rather than treat "no findings" as all-clear.
+
+    Transport is chosen by the provider's `kind`: `cli` shells out to a local coding-agent
+    CLI (no API key), anything else speaks HTTP to an OpenAI-compatible endpoint.
     """
     if not diff or not diff.strip():
         return [], True   # nothing to review is not a failure
 
-    # Fill any unset endpoint field from the configured provider
+    prompt = build_prompt(diff)
+
+    # Resolve the configured provider unless the caller pinned an explicit HTTP endpoint.
+    pconf = None
     if base_url is None or model is None:
         pconf = _resolve_provider(provider)
+        if provider_label is None:
+            provider_label = pconf.get("label")
+
+    # CLI transport: run a local CLI on the user's own subscription — no key involved.
+    if pconf is not None and pconf.get("kind") == "cli":
+        timeout = max(timeout, CLI_MIN_TIMEOUT)   # the agent boot alone can exceed a 20s cap
+        try:
+            raw = call_cli(
+                pconf["command"], pconf["args"],
+                f"{SYSTEM_PROMPT}\n\n{prompt}", timeout,
+                pconf.get("result_key", "result"),
+                env=pconf.get("env"),
+            )
+        except Exception as exc:  # noqa: BLE001 - fail-safe must catch everything
+            _warn_ai_skipped(exc)
+            return [], False
+        return parse_findings(raw, staged_files, provider_label)
+
+    # HTTP transport: OpenAI-compatible /chat/completions.
+    if pconf is not None:
         base_url = base_url or pconf["base_url"]
         model = model or pconf["model"]
         if extra_body is None:
             extra_body = pconf["extra_body"]
         if max_tokens_key is None:
             max_tokens_key = pconf.get("max_tokens_key", "max_tokens")
-        if provider_label is None:
-            provider_label = pconf.get("label")
     if max_tokens_key is None:
         max_tokens_key = "max_tokens"
     if api_key is None:
         api_key = ai_api_key()      # load AI_KEY from env
 
-    prompt = build_prompt(diff)
     try:
         raw = call_llm(base_url, model, api_key, prompt, timeout, max_tokens, extra_body, max_tokens_key)
     except Exception as exc:  # noqa: BLE001 - fail-safe must catch everything
-        msg = str(exc)
-        if len(msg) > 120:
-            msg = msg[:120] + "..."
-        print(f"[commitgate] AI review skipped ({msg}); deterministic gate unaffected.", file=sys.stderr)
+        _warn_ai_skipped(exc)
         return [], False
     return parse_findings(raw, staged_files, provider_label)
 

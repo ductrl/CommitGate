@@ -55,7 +55,7 @@ def test_review_happy_path_parses_findings():
         }
     ])
     with _llm_returning(content):
-        findings, ok = review("some diff", STAGED, api_key="k")
+        findings, ok = review("some diff", STAGED, api_key="k", provider="deepseek")
 
     assert ok is True
     assert len(findings) == 1
@@ -176,7 +176,7 @@ def test_parse_accepts_object_with_findings_key():
 
 def test_review_fail_safe_on_timeout(capsys):
     with patch.object(ai_reviewer.requests, "post", side_effect=requests.exceptions.Timeout):
-        findings, ok = review("some diff", STAGED, api_key="k")
+        findings, ok = review("some diff", STAGED, api_key="k", provider="deepseek")
     assert findings == []                      # never raises
     assert ok is False                         # a dead call is NOT a clean pass
     assert "AI review skipped" in capsys.readouterr().err
@@ -184,7 +184,7 @@ def test_review_fail_safe_on_timeout(capsys):
 def test_review_fail_safe_on_http_error():
     with patch.object(ai_reviewer.requests, "post",
                       return_value=FakeResponse("nope", ok=False, status_code=500)):
-        findings, ok = review("some diff", STAGED, api_key="k")
+        findings, ok = review("some diff", STAGED, api_key="k", provider="deepseek")
     assert findings == []
     assert ok is False
 
@@ -207,7 +207,7 @@ def test_review_targets_v4_flash_with_thinking_disabled():
         return FakeResponse("[]")
 
     with patch.object(ai_reviewer.requests, "post", side_effect=fake_post):
-        review("some diff", STAGED, api_key="k")
+        review("some diff", STAGED, api_key="k", provider="deepseek")
 
     assert captured["json"]["model"] == "deepseek-v4-flash"
     assert captured["json"]["thinking"] == {"type": "disabled"}
@@ -216,7 +216,8 @@ def test_review_targets_v4_flash_with_thinking_disabled():
 
 def test_review_self_wires_provider_and_key_when_omitted():
     # The pre-push case: caller hands over a diff but no api_key/provider. review() must
-    # resolve the provider from commitgate.yaml and pull the key from env (no 401).
+    # resolve the provider from config and pull the key from env (no 401). Config is
+    # mocked so the test doesn't depend on the repo's live commitgate.yaml.
     captured = {}
 
     def fake_post(url, headers=None, json=None, **kwargs):
@@ -224,7 +225,8 @@ def test_review_self_wires_provider_and_key_when_omitted():
         captured["headers"] = headers
         return FakeResponse('[{"file": "app/db.py", "severity": "low", "rule": "r", "description": "m"}]')
 
-    with patch.object(ai_reviewer, "ai_api_key", return_value="env-key"), \
+    with patch("commitgate.config.load_config", return_value={"ai": {"provider": "deepseek"}}), \
+         patch.object(ai_reviewer, "ai_api_key", return_value="env-key"), \
          patch.object(ai_reviewer.requests, "post", side_effect=fake_post):
         findings, ok = review("some diff", STAGED)   # no api_key, no provider
 
@@ -232,6 +234,111 @@ def test_review_self_wires_provider_and_key_when_omitted():
     assert captured["url"] == "https://api.deepseek.com/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer env-key"
     assert findings[0]["source"] == "AI Review (DeepSeek)"
+
+
+# --- CLI transport (claude-cli, no API key) -----------------------------------
+
+class FakeProc:
+    def __init__(self, stdout="", stderr="", returncode=0):
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
+
+def test_review_cli_provider_parses_envelope():
+    # claude-cli returns its JSON envelope; the model's findings live in "result".
+    inner = json.dumps([{"file": "app/db.py", "severity": "high", "rule": "r", "description": "m"}])
+    envelope = json.dumps({"is_error": False, "result": inner})
+    with patch.object(ai_reviewer.shutil, "which", return_value="/usr/bin/claude"), \
+         patch.object(ai_reviewer.subprocess, "run", return_value=FakeProc(stdout=envelope)) as run:
+        findings, ok = review("some diff", STAGED, provider="claude-cli")
+
+    assert ok is True
+    assert findings[0]["source"] == "AI Review (Claude Code)"
+    assert findings[0]["severity"] == "high"
+    _, kwargs = run.call_args
+    assert kwargs["input"]                      # prompt piped on stdin, not argv
+
+
+def test_review_cli_needs_no_api_key():
+    # No AI_KEY in the environment, yet the CLI path still works (subscription auth).
+    with patch.object(ai_reviewer, "ai_api_key", return_value=None), \
+         patch.object(ai_reviewer.shutil, "which", return_value="/usr/bin/claude"), \
+         patch.object(ai_reviewer.subprocess, "run",
+                      return_value=FakeProc(stdout=json.dumps({"result": "[]"}))):
+        findings, ok = review("some diff", STAGED, provider="claude-cli")
+    assert ok is True
+    assert findings == []
+
+
+def test_review_cli_missing_binary_warns_and_fails_safe(capsys):
+    # User selected claude-cli but doesn't have it installed -> clear message, no crash,
+    # ok=False so the deterministic gate still governs.
+    with patch.object(ai_reviewer.shutil, "which", return_value=None):
+        findings, ok = review("some diff", STAGED, provider="claude-cli")
+    assert findings == []
+    assert ok is False
+    err = capsys.readouterr().err
+    assert "AI review skipped" in err
+    assert "claude" in err
+
+
+def test_review_resolves_cli_provider_from_config():
+    # provider omitted; config says claude-cli -> CLI transport, HTTP path untouched.
+    with patch("commitgate.config.load_config", return_value={"ai": {"provider": "claude-cli"}}), \
+         patch.object(ai_reviewer.shutil, "which", return_value="/usr/bin/claude"), \
+         patch.object(ai_reviewer.subprocess, "run",
+                      return_value=FakeProc(stdout=json.dumps({"result": "[]"}))) as run, \
+         patch.object(ai_reviewer.requests, "post") as post:
+        findings, ok = review("some diff", STAGED)   # no provider, no api_key
+
+    assert ok is True
+    run.assert_called_once()
+    post.assert_not_called()
+
+
+def test_review_cli_disables_thinking_via_env():
+    # Extended thinking dominates CLI latency (~60s -> ~12s when off); the claude-cli
+    # provider must pass MAX_THINKING_TOKENS=0 into the subprocess environment.
+    with patch.object(ai_reviewer.shutil, "which", return_value="/usr/bin/claude"), \
+         patch.object(ai_reviewer.subprocess, "run",
+                      return_value=FakeProc(stdout=json.dumps({"result": "[]"}))) as run:
+        review("some diff", STAGED, provider="claude-cli")
+    _, kwargs = run.call_args
+    assert kwargs["env"]["MAX_THINKING_TOKENS"] == "0"
+
+
+def test_review_cli_floors_short_timeout():
+    # scan passes the HTTP-tuned 20s; the CLI path must floor it (agent boot alone can
+    # exceed 20s) so the review isn't spuriously skipped.
+    captured = {}
+
+    def fake_call_cli(command, args, prompt, timeout, result_key="result", env=None):
+        captured["timeout"] = timeout
+        return "[]"
+
+    with patch.object(ai_reviewer, "call_cli", side_effect=fake_call_cli):
+        findings, ok = review("some diff", STAGED, provider="claude-cli", timeout=20)
+    assert ok is True
+    assert captured["timeout"] >= ai_reviewer.CLI_MIN_TIMEOUT
+
+
+def test_review_cli_nonzero_exit_fails_safe():
+    with patch.object(ai_reviewer.shutil, "which", return_value="/usr/bin/claude"), \
+         patch.object(ai_reviewer.subprocess, "run",
+                      return_value=FakeProc(stderr="not logged in", returncode=1)):
+        findings, ok = review("some diff", STAGED, provider="claude-cli")
+    assert findings == []
+    assert ok is False
+
+
+def test_review_cli_timeout_fails_safe():
+    with patch.object(ai_reviewer.shutil, "which", return_value="/usr/bin/claude"), \
+         patch.object(ai_reviewer.subprocess, "run",
+                      side_effect=ai_reviewer.subprocess.TimeoutExpired(cmd="claude", timeout=1)):
+        findings, ok = review("some diff", STAGED, provider="claude-cli")
+    assert findings == []
+    assert ok is False
 
 
 def test_call_llm_hits_chat_completions_with_bearer():
