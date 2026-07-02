@@ -26,6 +26,12 @@ def scan(
         help="Maximum time (seconds) allowed for AI review.",
     )
 ):
+    # HANDLE SKIP
+    skip = os.environ.get("SKIP", "")
+    if skip == "commitgate":
+        print("[yellow]CommitGate skipped via SKIP=commitgate[/yellow]")
+        raise typer.Exit(code=0)
+
     if hook_type == "pre-commit":
         diff, file_paths = get_staged_diff(), get_staged_files()
     elif hook_type == "pre-push":
@@ -38,12 +44,6 @@ def scan(
             raise typer.Exit(1)
     else:
         raise ValueError(f"Invalid hook type: {hook_type}")
-
-    # HANDLE SKIP
-    skip = os.environ.get("SKIP", "")
-    if skip == "all":
-        print("[yellow]CommitGate skipped via SKIP=all[/yellow]")
-        raise typer.Exit(code=0)
 
     # LOAD CONFIGS
 
