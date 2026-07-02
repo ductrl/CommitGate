@@ -6,7 +6,7 @@ It runs two scanners over your staged changes and merges their findings:
 | Layer | Tool | Catches |
 |-------|------|---------|
 | Deterministic | [**Gitleaks**](https://github.com/gitleaks/gitleaks) | Known secret shapes — API keys, tokens, passwords matching standard patterns |
-| Semantic | **AI reviewer** (OpenAI-compatible — DeepSeek, OpenAI, Gemini, or Groq) | What regex misses — internal URLs, non-standard credentials, `eval`/`os.system`, data-leaking logic |
+| Semantic | **AI reviewer** — DeepSeek, OpenAI, Gemini, Groq, or a local CLI (**Claude Code** / **Codex**, no API key) | What regex misses — internal URLs, non-standard credentials, `eval`/`os.system`, data-leaking logic |
 
 Findings from both layers are merged, deduplicated, and fed into a **decision engine** that rules `allow / warn / block`. A Rich terminal report explains why.
 
@@ -52,11 +52,13 @@ Install these on your machine **before** installing CommitGate:
   gitleaks version
   ```
 
-- **AI API key** — required for the AI reviewer (pick one provider; you'll add the key to your `.env` in step 3):
+- **AI API key** — required for an API-based AI reviewer (pick one provider; you'll add the key to your `.env` in step 3):
   - [Groq](https://console.groq.com) — free tier available, recommended for getting started
   - [DeepSeek](https://platform.deepseek.com) — low cost
   - [OpenAI](https://platform.openai.com)
   - [Gemini](https://aistudio.google.com)
+
+  **No key?** If you already have [Claude Code](https://claude.com/claude-code) or [Codex](https://developers.openai.com/codex/) installed and logged in, run the reviewer on that subscription instead — set `provider: claude-cli` (or `codex-cli`) in `commitgate.yaml` and skip the key entirely (see [Using a local CLI](#using-a-local-cli-no-api-key)).
 
 ### 2. Install CommitGate
 
@@ -101,7 +103,8 @@ The generated `commitgate.yaml` looks like this — edit it to match your needs:
 ```yaml
 ai:
   enabled: true          # set to false to run gitleaks only (no API key needed)
-  # Options: openai, deepseek, gemini, groq
+  # API providers (need AI_KEY): openai, deepseek, gemini, groq
+  # No key (uses your local CLI login): claude-cli (Claude Code), codex-cli (Codex)
   # Tip: groq offers a free API key — get one at https://console.groq.com
   provider: deepseek
   timeout: 20            # seconds before AI review is abandoned (fail closed → warn)
@@ -112,6 +115,17 @@ reporting:
 ```
 
 **Commit `commitgate.yaml`** so your whole team shares the same gate policy — it contains no secrets.
+
+### Using a local CLI (no API key)
+
+If you already use [Claude Code](https://claude.com/claude-code) or [Codex](https://developers.openai.com/codex/), CommitGate can run the semantic review through it instead of an API provider — no API key and no per-token cost, on your existing subscription.
+
+| Provider | Requires | Set in `commitgate.yaml` |
+|----------|----------|--------------------------|
+| Claude Code | `claude` installed + logged in (`claude`, then `/login`) | `provider: claude-cli` |
+| Codex | `codex` installed + logged in (`codex login`) | `provider: codex-cli` |
+
+That's the only change. If the CLI isn't installed or logged in, CommitGate prints a clear message and falls back to the gitleaks-only gate — it never blocks your commit over a missing CLI. Two things to note: a CLI review is a few seconds slower than an API provider, and — like every AI provider — your staged diff is still sent to that provider (Anthropic / OpenAI; see [Data Privacy](#data-privacy)).
 
 ---
 
@@ -250,7 +264,7 @@ Build a **CommitGate Security Gate** dashboard with these searches:
 | `cli.py` | Typer commands: `scan`, `install-hook`, `init`, `version` |
 | `git_utils.py` | Git ops via subprocess: staged files/diff, pre-push change range (read from the hook's stdin), is-git-repo, install pre-commit/pre-push hook |
 | `gitleaks_runner.py` | Run gitleaks binary, parse findings into dicts |
-| `ai_reviewer.py` | LLM semantic review (OpenAI-compatible — provider set in `commitgate.yaml`), returns `(findings, ok)` |
+| `ai_reviewer.py` | LLM semantic review — an API provider or a local CLI (Claude Code / Codex), set in `commitgate.yaml`; returns `(findings, ok)` |
 | `decision_engine.py` | Merge findings → `allow / warn / block` (reads `commitgate.yaml` thresholds) |
 | `report_generator.py` | Format findings for Rich terminal output |
 | `splunk_logger.py` | POST audit event to Splunk HEC after every scan |
@@ -264,7 +278,7 @@ See `docs/architecture.md` for the full architecture and `CONTRIBUTING.md` for t
 
 When `ai.enabled: true`, CommitGate sends your **staged code diffs to an external AI provider** (whichever you configure in `commitgate.yaml`). Do not use the AI reviewer on confidential or proprietary code without your organization's authorization. Set `ai.enabled: false` to run gitleaks only — no data leaves your machine.
 
-Supported providers: **Groq**, **DeepSeek**, **OpenAI**, **Gemini**. Local LLM support (Ollama) and self-hosted Splunk are on the roadmap so CommitGate can operate fully air-gapped.
+Supported providers: **Groq**, **DeepSeek**, **OpenAI**, **Gemini**, and the local CLIs **Claude Code** (`claude`) and **Codex** (`codex`) — the CLIs need no API key, but your diff is still sent to their provider (Anthropic / OpenAI), so they are *not* air-gapped options. Local LLM support (Ollama) and self-hosted Splunk are on the roadmap so CommitGate can operate fully air-gapped.
 
 ---
 

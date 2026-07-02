@@ -6,7 +6,8 @@
 - **CLI:** Typer
 - **Terminal output:** Rich
 - **Config:** PyYAML (`commitgate.yaml`)
-- **LLM HTTP:** requests (OpenAI-compatible — Groq, DeepSeek, OpenAI, Gemini)
+- **LLM (HTTP):** requests (OpenAI-compatible — Groq, DeepSeek, OpenAI, Gemini)
+- **LLM (CLI):** `subprocess` to a local coding-agent CLI (Claude Code) — no API key
 - **Secret scanning:** Gitleaks — external binary invoked via `subprocess`
 
 ## Orchestration Flow
@@ -53,24 +54,30 @@ Locates the gitleaks binary on PATH, runs `run_gitleaks_scan(file_paths)` per fi
 Rich terminal output. Formats findings with severity colouring, deduplicates overlapping gitleaks and AI findings.
 
 #### `ai_reviewer.py`
-Semantic review of the staged diff via an OpenAI-compatible LLM. Provider is set in `commitgate.yaml` (`ai.provider`); the API key is read from the `AI_KEY` environment variable.
+Semantic review of the staged diff. Provider is set in `commitgate.yaml` (`ai.provider`); `review()` dispatches on the provider's transport `kind`:
+
+- **HTTP providers** (`kind: http`, the default) — an OpenAI-compatible `/chat/completions` call; the API key is read from the `AI_KEY` environment variable.
+- **CLI providers** (`kind: cli`) — shells out via `subprocess` to a local coding-agent CLI that runs on the user's own login, so **no API key is needed**.
 
 Supported providers and their defaults:
 
-| Provider | Model |
-|----------|-------|
-| `groq` | `openai/gpt-oss-120b` |
-| `deepseek` | `deepseek-v4-flash` |
-| `openai` | `gpt-5.4-mini` |
-| `gemini` | `gemini-2.5-flash` |
+| Provider | Transport | Model / command | API key |
+|----------|-----------|-----------------|---------|
+| `groq` | HTTP | `openai/gpt-oss-120b` | `AI_KEY` |
+| `deepseek` | HTTP | `deepseek-v4-flash` | `AI_KEY` |
+| `openai` | HTTP | `gpt-5.4-mini` | `AI_KEY` |
+| `gemini` | HTTP | `gemini-2.5-flash` | `AI_KEY` |
+| `claude-cli` | CLI | `claude` (Claude Code, model `haiku`) | none — uses your Claude login |
+| `codex-cli` | CLI | `codex` (`codex exec --json`) | none — uses your `codex login` |
 
-- `review(diff, staged_files)` — main orchestrator (called by `scan` for both hook types); resolves provider from `PROVIDER_CONFIG` + key from env, calls the LLM, returns `(findings, ok)`
+- `review(diff, staged_files)` — main orchestrator (called by `scan` for both hook types); resolves the provider from `PROVIDER_CONFIG`, then either calls the HTTP endpoint (key from env) or the CLI, and returns `(findings, ok)`
 - `review_staged()` — convenience wrapper that pulls the staged diff/files from git, then delegates to `review()`
 - `build_prompt(diff)` — wraps the diff into the security-review prompt
-- `call_llm(...)` — OpenAI-compatible `/chat/completions` call with SSE streaming
+- `call_llm(...)` — OpenAI-compatible `/chat/completions` call with SSE streaming (HTTP providers)
+- `call_cli(...)` — runs the CLI via subprocess (prompt piped on stdin), then unwraps its output per `output_mode`: Claude's single JSON envelope, or Codex's JSONL event stream (last `agent_message`). The timeout is floored so a per-commit review isn't spuriously skipped on a cold start
 - `parse_findings(raw, staged_files)` — validates model output into finding dicts; returns `(findings, parse_ok)`
 
-`ok=False` on any LLM error or timeout — the caller warns and continues on the deterministic gate only. Never raises.
+`ok=False` on any LLM error, timeout, or a missing/failed CLI — the caller warns and continues on the deterministic gate only. Never raises.
 
 #### `splunk_logger.py`
 `log_decision(decision) → None`. POSTs the scan decision to a Splunk HEC endpoint. Skips silently if `SPLUNK_HEC_TOKEN` is not set. Redacts the `secret` field before sending. Never raises.

@@ -94,6 +94,28 @@ PROVIDER_CONFIG = {
         ],
         "result_key": "result",
         "env": {"MAX_THINKING_TOKENS": "0"},
+        "output": "envelope",   # single JSON object; answer at result_key
+    },
+    "codex-cli": {
+        "kind": "cli",
+        "label": "Codex",
+        "command": "codex",
+        # exec              : non-interactive. --json: JSONL event stream (we read the last
+        #                     agent_message). No API key: uses your `codex login` session.
+        # -s read-only      : no writes/network for shell commands (least-privilege). NOTE:
+        #                     Codex has no "no tools" mode, so it may still READ workspace files.
+        # -a never          : never pause for approval (would hang the hook).
+        # -c ...effort=low  : cut reasoning latency (Codex's analogue of Claude's thinking-off).
+        # trailing "-"      : read the prompt from stdin.
+        # Model comes from ~/.codex/config.toml; add "-m","<model>" to override.
+        "args": [
+            "exec", "--json",
+            "-s", "read-only",
+            "-a", "never",
+            "-c", "model_reasoning_effort=low",
+            "-",
+        ],
+        "output": "jsonl",      # Codex event stream; answer in the last agent_message
     },
 }
 
@@ -262,6 +284,28 @@ def _unwrap_cli_output(stdout: str, result_key: str = "result") -> str:
     return text
 
 
+def _unwrap_codex_jsonl(stdout: str) -> str:
+    """Pull the model's answer out of Codex's `exec --json` JSONL event stream.
+
+    Codex prints one JSON object per line; the assistant's answer is the last
+    `item.completed` event whose item type is `agent_message` (text at `item.text`).
+    Non-JSON progress lines are skipped; if no agent message is found, returns "".
+    """
+    text = ""
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue   # progress / noise line -- skip
+        item = event.get("item") if isinstance(event, dict) else None
+        if isinstance(item, dict) and item.get("type") == "agent_message" and item.get("text"):
+            text = item["text"]   # keep the latest agent_message
+    return text
+
+
 def call_cli(
     command: str,
     args: List[str],
@@ -269,8 +313,9 @@ def call_cli(
     timeout: int = DEFAULT_TIMEOUT,
     result_key: str = "result",
     env: Optional[dict] = None,
+    output_mode: str = "envelope",
 ) -> str:
-    """Run a local coding-agent CLI (e.g. Claude Code) as the LLM transport.
+    """Run a local coding-agent CLI (e.g. Claude Code, Codex) as the LLM transport.
 
     Unlike `call_llm`, this makes no HTTP call of its own: it shells out to an already
     installed and logged-in CLI, which reaches its provider under the user's own
@@ -297,6 +342,8 @@ def call_cli(
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()
         raise RuntimeError(f"'{command}' exited {proc.returncode}: {detail[:200]}")
+    if output_mode == "jsonl":
+        return _unwrap_codex_jsonl(proc.stdout)
     return _unwrap_cli_output(proc.stdout, result_key)
 
 
@@ -499,6 +546,7 @@ def review(
                 f"{SYSTEM_PROMPT}\n\n{prompt}", timeout,
                 pconf.get("result_key", "result"),
                 env=pconf.get("env"),
+                output_mode=pconf.get("output", "envelope"),
             )
         except Exception as exc:  # noqa: BLE001 - fail-safe must catch everything
             _warn_ai_skipped(exc)

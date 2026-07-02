@@ -45,8 +45,8 @@ def create_default_config() -> Path:
     with open(path, "w", encoding="utf-8") as f:
         # One-line discoverability hint, then the defaults. DEFAULT_CONFIG stays the single
         # source of truth for the values; the comment only names the provider options.
-        f.write("# ai.provider: openai / deepseek / gemini / groq (need AI_KEY), "
-                "or claude-cli (no key -- uses your local Claude Code login)\n")
+        f.write("# ai.provider: openai / deepseek / gemini / groq (need AI_KEY), or a local CLI "
+                "with no key -- claude-cli (Claude Code) / codex-cli (Codex)\n")
         yaml.safe_dump(DEFAULT_CONFIG, f, sort_keys=False)
 
     return path
