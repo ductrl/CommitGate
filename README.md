@@ -121,7 +121,7 @@ commitgate init          # create commitgate.yaml + install a hook (asks: pre-co
 commitgate scan          # scan your changes (runs automatically via the installed hook)
 commitgate install-hook  # install a hook only, no config file (asks: pre-commit or pre-push)
 commitgate version       # print version
-SKIP=all git commit ...  # bypass CommitGate for a single commit
+SKIP=commitgate git commit ...  # bypass CommitGate for a single commit
 ```
 
 Once the hook is installed, just commit (or push) normally. CommitGate intercepts the action, scans the changes, and either lets it through or blocks it with a report.
