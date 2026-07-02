@@ -44,6 +44,7 @@ Install these on your machine **before** installing CommitGate:
   - Windows: `winget install gitleaks`
   - macOS: `brew install gitleaks`
   - Linux: download the release binary and place it on your `PATH`
+  - Or follow Gitleaks's install instructions [here](https://github.com/gitleaks/gitleaks#installing)
 
   Confirm it's on your `PATH` before continuing:
 
