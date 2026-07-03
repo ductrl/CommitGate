@@ -100,14 +100,12 @@ PROVIDER_CONFIG = {
         "kind": "cli",
         "label": "Codex",
         "command": "codex",
-        # exec              : non-interactive. --json: JSONL event stream (we read the last
-        #                     agent_message). No API key: uses your `codex login` session.
+        # exec              : non-interactive. --json: JSONL event stream (we read the last agent_message)
         # -s read-only      : no writes/network for shell commands (least-privilege). NOTE:
         #                     Codex has no "no tools" mode, so it may still READ workspace files.
         # -c ...effort=low  : cut reasoning latency (Codex's analogue of Claude's thinking-off).
         # trailing "-"      : read the prompt from stdin.
         # exec is non-interactive -> never prompts for approval, so no -a/approval flag is needed.
-        # Model comes from ~/.codex/config.toml; add "-m","<model>" to override.
         "args": [
             "exec", "--json",
             "-s", "read-only",
