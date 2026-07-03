@@ -104,14 +104,13 @@ PROVIDER_CONFIG = {
         #                     agent_message). No API key: uses your `codex login` session.
         # -s read-only      : no writes/network for shell commands (least-privilege). NOTE:
         #                     Codex has no "no tools" mode, so it may still READ workspace files.
-        # -a never          : never pause for approval (would hang the hook).
         # -c ...effort=low  : cut reasoning latency (Codex's analogue of Claude's thinking-off).
         # trailing "-"      : read the prompt from stdin.
+        # exec is non-interactive -> never prompts for approval, so no -a/approval flag is needed.
         # Model comes from ~/.codex/config.toml; add "-m","<model>" to override.
         "args": [
             "exec", "--json",
             "-s", "read-only",
-            "-a", "never",
             "-c", "model_reasoning_effort=low",
             "-",
         ],
