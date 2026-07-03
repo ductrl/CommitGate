@@ -43,9 +43,7 @@ import requests
 DEFAULT_TIMEOUT = 20        # seconds; suits the fast HTTP providers. override w/ COMMITGATE_AI_TIMEOUT
 DEFAULT_MAX_TOKENS = 2048
 CONNECT_TIMEOUT = 5         # separate connect timeout — fail fast if network is down
-CLI_MIN_TIMEOUT = 30        # CLI agents cold-start a process first (~6s typical w/ thinking off,
-                            # up to ~20s cold) — floor the HTTP-tuned 20s default so a cold start
-                            # isn't spuriously skipped. It's a max-wait cap, not added latency.
+CLI_MIN_TIMEOUT = 30        # CLI agents cold-start a process first
 
 DEFAULT_PROVIDER = "deepseek"
 
@@ -54,7 +52,7 @@ DEFAULT_PROVIDER = "deepseek"
 # no API key). Switch provider by editing `ai.provider` in commitgate.yaml -- no code change.
 PROVIDER_CONFIG = {
     "openai": {
-        "label": "OpenAI",          # shown in finding source, e.g. "AI Review (OpenAI)"
+        "label": "OpenAI",         
         "base_url": "https://api.openai.com/v1",
         "model": "gpt-5.4-mini",
         "extra_body": None,
@@ -85,7 +83,7 @@ PROVIDER_CONFIG = {
         # -p            : non-interactive print; json envelope so we can pull the answer cleanly.
         # --safe-mode   : skip CLAUDE.md/MCP/plugins/hooks discovery
         # --tools ""    : no tools -> can't read unstaged files (least-privilege) + faster
-        # --model haiku : the task is small; bump to sonnet for a deeper (slower) review
+        # --model haiku : the task is small; bump to sonnet for a deeper review
         # --max-turns 1 : single shot
         "args": [
             "-p", "--output-format", "json",
@@ -276,11 +274,7 @@ def call_cli(
 
     Unlike `call_llm`, this makes no HTTP call of its own: it shells out to an already
     installed and logged-in CLI, which reaches its provider under the user's own
-    subscription -- so no API key is needed. The prompt is piped on stdin; stdout is the
-    CLI's JSON envelope, from which we take the model's text answer (`result_key`). `env`
-    is merged onto the current environment for the child (e.g. MAX_THINKING_TOKENS=0 to
-    stop the agent burning latency on hidden reasoning). Raises on a missing binary,
-    non-zero exit, or timeout; `review`'s fail-safe handles it.
+    subscription -- so no API key is needed.
     """
     exe = shutil.which(command)
     if exe is None:
@@ -523,6 +517,11 @@ def review(
         max_tokens_key = "max_tokens"
     if api_key is None:
         api_key = ai_api_key()      # load AI_KEY from env
+
+    if base_url is None or model is None:
+        # Malformed/partial provider config; fail closed rather than pass None to the HTTP client.
+        _warn_ai_skipped(RuntimeError("AI provider missing base_url or model"))
+        return [], False
 
     try:
         raw = call_llm(base_url, model, api_key, prompt, timeout, max_tokens, extra_body, max_tokens_key)
