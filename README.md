@@ -1,14 +1,6 @@
 # CommitGate
-An AI-powered security gate for Git. On every `git commit` — or every `git push` — CommitGate scans your changes for potential vulnerabilities and **blocks them** before secrets or risky code ever reach your history.
 
-It runs two scanners over your staged changes and merges their findings:
-
-| Layer | Tool | Catches |
-|-------|------|---------|
-| Deterministic | [**Gitleaks**](https://github.com/gitleaks/gitleaks) | Known secret shapes — API keys, tokens, passwords matching standard patterns |
-| Semantic | **AI reviewer** (OpenAI-compatible — DeepSeek, OpenAI, Gemini, or Groq) | What regex misses — internal URLs, non-standard credentials, `eval`/`os.system`, data-leaking logic |
-
-Findings from both layers are merged, deduplicated, and fed into a **decision engine** that rules `allow / warn / block`. A Rich terminal report explains why.
+An AI-powered security gate for Git. On every `git commit` — or every `git push` — CommitGate scans your changes and **blocks them** before secrets or risky code ever reach your history.
 
 ---
 
@@ -20,43 +12,54 @@ Findings from both layers are merged, deduplicated, and fed into a **decision en
 
 ---
 
-## Table of Contents
+## The scanners
 
-- [Setup](#setup)
-- [Usage](#usage)
-- [How it works](#how-it-works)
-- [Splunk Setup](#splunk-setup-optional)
-- [Module map](#module-map)
-- [Data Privacy](#data-privacy)
-- [License](#license)
+CommitGate runs two scanners over your changes and merges their findings:
+
+| Scanner | Catches |
+|---------|---------|
+| [**Gitleaks**](https://github.com/gitleaks/gitleaks) | Known secret shapes — API keys, tokens, passwords that match standard patterns |
+| **AI Reviewer** | What regex missed — code understanding, private knowledge & data |
+
+---
+
+## Available Providers
+
+You choose which AI backs the reviewer. Either bring an API key, or run it on an AI agent you already have logged in — no key required.
+
+| Type | Providers |
+|------|-----------|
+| **OpenAI-compatible API** (needs an API key) | OpenAI · Gemini · DeepSeek · Groq |
+| **AI Agents** (no API key — uses your local login) | Claude Code · Codex |
+
+---
+
+## How it works
+
+1. You run `git commit` (or `git push`). The installed Git hook hands your changes to CommitGate.
+2. Two scanners run over the diff — **Gitleaks** (known secret patterns) and the **AI Reviewer** (everything else).
+3. The **decision engine** merges the findings and rules **allow**, **warn**, or **block**.
+4. You get a report in your terminal. On **block**, the commit or push is stopped; otherwise it proceeds.
+
+See [`docs/architecture.md`](docs/architecture.md) for the module-by-module design.
 
 ---
 
 ## Setup
 
-### 1. Install prerequisites
+### 1. Install the prerequisites
 
-Install these on your machine **before** installing CommitGate:
+| Requirement | How to install |
+|-------------|----------------|
+| **Python ≥ 3.10** | [python.org](https://www.python.org/downloads/) |
+| **Git** | [git-scm.com](https://git-scm.com/downloads) |
+| **Gitleaks** (separate binary, *not* installed by `pip`) | Windows: `winget install gitleaks` · macOS: `brew install gitleaks` · Linux: download the [release binary](https://github.com/gitleaks/gitleaks/releases) onto your `PATH` |
 
-- **Python ≥ 3.10**
-- **Git**
-- **Gitleaks** — an external binary that must be installed separately (it is *not* pulled in by `pip`):
-  - Windows: `winget install gitleaks`
-  - macOS: `brew install gitleaks`
-  - Linux: download the release binary and place it on your `PATH`
-  - Or follow Gitleaks's install instructions [here](https://github.com/gitleaks/gitleaks#installing)
+Confirm Gitleaks is ready:
 
-  Confirm it's on your `PATH` before continuing:
-
-  ```bash
-  gitleaks version
-  ```
-
-- **AI API key** — required for the AI reviewer (pick one provider; you'll add the key to your `.env` in step 3):
-  - [Groq](https://console.groq.com) — free tier available, recommended for getting started
-  - [DeepSeek](https://platform.deepseek.com) — low cost
-  - [OpenAI](https://platform.openai.com)
-  - [Gemini](https://aistudio.google.com)
+```bash
+gitleaks version
+```
 
 ### 2. Install CommitGate
 
@@ -64,117 +67,129 @@ Install these on your machine **before** installing CommitGate:
 pip install git+https://github.com/ductrl/CommitGate.git
 ```
 
-### 3. Configure environment variables
+### 3. Protect your repo
 
-Create a `.env` file in the root of **your project** (not CommitGate's repo):
-
-```env
-# Required — AI reviewer (one key for whichever provider you set in commitgate.yaml)
-AI_KEY=your-api-key-here
-# Free option: get a Groq key at https://console.groq.com, then set provider: groq in commitgate.yaml
-
-# Optional — AI review timeout in seconds (default: 20)
-# COMMITGATE_AI_TIMEOUT=20
-
-# Optional — Splunk audit logging (see Splunk Setup below)
-# SPLUNK_HEC_TOKEN=your-hec-token-here
-# SPLUNK_HEC_URL=https://prd-p-yourinstance.splunkcloud.com:8088/services/collector/event
-# SPLUNK_VERIFY_SSL=false                   # required for Splunk Cloud free trial
-```
-
-**`.env` should be gitignored — your keys should never enter source or git history.**
-
-### 4. Initialize CommitGate
-
-Run this inside the repo you want to protect:
+Run this **inside the repo you want to guard**:
 
 ```bash
 commitgate init
 ```
 
-This does two things at once:
-- Creates a `commitgate.yaml` config file in the repo root
-- Installs a Git hook so CommitGate scans automatically. It asks whether you want a **pre-commit** hook (scan on every commit) or a **pre-push** hook (scan on every push) — see [Pre-commit vs pre-push](#pre-commit-vs-pre-push)
+This creates a `commitgate.yaml` config file and installs a Git hook. It asks whether you want a **pre-commit** or **pre-push** hook — see [How to use](#how-to-use).
 
-The generated `commitgate.yaml` looks like this — edit it to match your needs:
+### 4. Set up the AI Reviewer
+
+Open `commitgate.yaml` and set `provider` to match one of the paths below.
+
+**Option A — API key** (OpenAI · Gemini · DeepSeek · Groq)
 
 ```yaml
 ai:
-  enabled: true          # set to false to run gitleaks only (no API key needed)
-  # Options: openai, deepseek, gemini, groq
-  # Tip: groq offers a free API key — get one at https://console.groq.com
-  provider: deepseek
-  timeout: 20            # seconds before AI review is abandoned (fail closed → warn)
-policy:
-  block_severity: high   # findings at this severity or above stop the commit, available options: low / medium / high / critical
-reporting:
-  show_suggestions: true # include AI fix suggestions in the terminal report
+  provider: groq        # or openai / gemini / deepseek
 ```
 
-**Commit `commitgate.yaml`** so your whole team shares the same gate policy — it contains no secrets.
+Create a `.env` file in your project root and add your key (Groq keys are **free** at [console.groq.com](https://console.groq.com)):
+
+```env
+AI_KEY=your-api-key-here
+```
+
+Keep `.env` out of Git — it holds your key.
+
+**Option B — AI Agent** (Claude Code or Codex, no API key)
+
+First confirm the agent is installed and logged in:
+
+```bash
+claude --version    # Claude Code
+codex --version     # Codex
+```
+
+Then set the provider:
+
+```yaml
+ai:
+  provider: claude-cli   # or codex-cli
+```
+
+**Option C — No AI** (Gitleaks only, nothing leaves your machine)
+
+```yaml
+ai:
+  enabled: false
+```
+
+Commit `commitgate.yaml` so your whole team shares the same gate policy — it contains no secrets. That's it; your next commit (or push) is gated.
 
 ---
 
-## Usage
+## How to use
+
+After `commitgate init`, just `git commit` / `git push` as usual — CommitGate runs automatically.
+
+### pre-commit vs pre-push
+
+You pick one when you run `commitgate init` (or `commitgate install-hook`):
+
+| Hook | Runs on | Scans |
+|------|---------|-------|
+| **pre-commit** | every `git commit` | your staged changes — fast, per-commit feedback |
+| **pre-push** | every `git push` | every commit in the push range — a final gate before code leaves your machine |
+
+To switch, or add the other one later, run `commitgate install-hook` and choose. Install both for defense in depth.
+
+### What each outcome means
+
+| Outcome | When | Result |
+|---------|------|--------|
+| `allow` | no findings | proceeds — exit `0` |
+| `warn` | findings **below** the block severity | proceeds, findings printed — exit `0` |
+| `block` | findings **at or above** the block severity (default: `high`) | stopped — exit `1` |
+
+Change the bar with `policy.block_severity` in `commitgate.yaml` (`low` / `medium` / `high` / `critical`).
+
+### Scan manually
+
+Check your staged changes any time, without committing:
 
 ```bash
-commitgate init          # create commitgate.yaml + install a hook (asks: pre-commit or pre-push)
-commitgate scan          # scan your changes (runs automatically via the installed hook)
-commitgate install-hook  # install a hook only, no config file (asks: pre-commit or pre-push)
-commitgate version       # print version
-SKIP=commitgate git commit ...  # bypass CommitGate for a single commit
-```
-
-Once the hook is installed, just commit (or push) normally. CommitGate intercepts the action, scans the changes, and either lets it through or blocks it with a report.
-
-### Pre-commit vs pre-push
-
-`commitgate init` and `commitgate install-hook` ask which Git hook to install:
-
-| Hook | Fires on | Scans | Use when |
-|------|----------|-------|----------|
-| **pre-commit** | every `git commit` | the staged diff | you want fast, incremental feedback as you work — the default |
-| **pre-push** | every `git push` | every commit in the push range, not just the latest | you want a final gate before code leaves your machine — it catches a secret buried in an earlier local commit that a per-commit scan might have missed |
-
-A blocked **commit** and a blocked **push** both stop with a non-zero exit code. Install both hooks if you want defense in depth.
-
-### Decision outcomes
-
-| Outcome | Meaning | Exit code |
-|---------|---------|-----------|
-| `allow` | No findings, or all below warn threshold | `0` — commit proceeds |
-| `warn` | Medium-severity findings | `0` — commit proceeds, warnings printed |
-| `block` | High or critical findings | `1` — commit stopped |
-
-### Manual scan (without committing)
-
-```bash
-git add <file>
+git add app.py
 commitgate scan
-git restore --staged <file>
+```
+
+If `app.py` hardcodes a secret, you'll see:
+
+```
+CommitGate detected 1 security finding(s):
+[CRITICAL] Finding #1
+	- Source: gitleaks
+	- Category: Secret leak
+	- Severity: critical
+	- File: app.py
+	- Location: Line 12 to 12
+	- Description: AWS Access Key detected
+Commit blocked by CommitGate.
+```
+
+### Skip once
+
+Need to bypass the gate for a single commit:
+
+```bash
+SKIP=commitgate git commit -m "your message"
 ```
 
 ---
 
-## How it works
+## Data Privacy
 
-Both hooks feed the same scan pipeline — they differ only in what changes they hand it: the staged diff (pre-commit) or the full push range (pre-push).
+When the AI Reviewer is enabled, CommitGate sends your **staged code diffs to the AI provider you configure** in `commitgate.yaml`. This applies to the AI Agents too (Claude Code → Anthropic, Codex → OpenAI) — they need no API key, but your diff is still sent to their provider, so they are *not* air-gapped options.
 
-```
-git commit → .git/hooks/pre-commit   (staged diff)
-git push   → .git/hooks/pre-push     (every commit in the push range)
-        →  commitgate scan
-        ├─ gitleaks_runner    scan the changes for known secret patterns
-        ├─ ai_reviewer        LLM semantic review for issues regex can't catch
-        ├─ decision_engine    merge findings → allow / warn / block
-        ├─ report_generator   Rich terminal output
-        ├─ splunk_logger      audit event to Splunk HEC (optional)
-        └─ exit code          block → non-zero (stops the commit/push) · allow/warn → 0
-```
+Do not use the AI Reviewer on confidential or proprietary code without your organization's authorization. Set `ai.enabled: false` to run Gitleaks only — no data leaves your machine. Fully local LLM support (Ollama) is on the roadmap.
 
 ---
 
-## Splunk Setup (optional)
+## Splunk Audit Logging (optional)
 
 CommitGate can send an audit event to Splunk after every scan, giving you a searchable history of every commit decision.
 
@@ -240,31 +255,6 @@ Build a **CommitGate Security Gate** dashboard with these searches:
 | Top triggered categories | Bar chart | `sourcetype="commitgate:audit" \| stats count by findings{}.category \| sort -count` |
 | Findings by severity | Pie chart | `sourcetype="commitgate:audit" \| stats count by findings{}.severity` |
 | Recent blocked commits | Table | `sourcetype="commitgate:audit" \| table _time reason findings_count \| sort -_time` |
-
----
-
-## Module map
-
-| Module | Role |
-|--------|------|
-| `cli.py` | Typer commands: `scan`, `install-hook`, `init`, `version` |
-| `git_utils.py` | Git ops via subprocess: staged files/diff, pre-push change range (read from the hook's stdin), is-git-repo, install pre-commit/pre-push hook |
-| `gitleaks_runner.py` | Run gitleaks binary, parse findings into dicts |
-| `ai_reviewer.py` | LLM semantic review (OpenAI-compatible — provider set in `commitgate.yaml`), returns `(findings, ok)` |
-| `decision_engine.py` | Merge findings → `allow / warn / block` (reads `commitgate.yaml` thresholds) |
-| `report_generator.py` | Format findings for Rich terminal output |
-| `splunk_logger.py` | POST audit event to Splunk HEC after every scan |
-| `config.py` | Generate and load `commitgate.yaml`, merge with built-in defaults |
-
-See `docs/architecture.md` for the full architecture and `CONTRIBUTING.md` for the branch/PR workflow.
-
----
-
-## Data Privacy
-
-When `ai.enabled: true`, CommitGate sends your **staged code diffs to an external AI provider** (whichever you configure in `commitgate.yaml`). Do not use the AI reviewer on confidential or proprietary code without your organization's authorization. Set `ai.enabled: false` to run gitleaks only — no data leaves your machine.
-
-Supported providers: **Groq**, **DeepSeek**, **OpenAI**, **Gemini**. Local LLM support (Ollama) and self-hosted Splunk are on the roadmap so CommitGate can operate fully air-gapped.
 
 ---
 

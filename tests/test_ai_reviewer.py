@@ -308,12 +308,65 @@ def test_review_cli_disables_thinking_via_env():
     assert kwargs["env"]["MAX_THINKING_TOKENS"] == "0"
 
 
+# --- Codex CLI (JSONL event stream) -------------------------------------------
+
+def _codex_stream(agent_text, *, extra_agent=None):
+    """Build a realistic `codex exec --json` JSONL stream ending in an agent_message."""
+    lines = [
+        json.dumps({"type": "thread.started", "thread_id": "t1"}),
+        json.dumps({"type": "turn.started"}),
+        json.dumps({"type": "item.completed", "item": {"id": "i0", "type": "reasoning", "text": "thinking"}}),
+    ]
+    if extra_agent:   # an earlier agent_message that must be superseded by the final one
+        lines.append(json.dumps({"type": "item.completed",
+                                 "item": {"id": "i1", "type": "agent_message", "text": extra_agent}}))
+    lines += [
+        json.dumps({"type": "item.completed", "item": {"id": "i2", "type": "agent_message", "text": agent_text}}),
+        json.dumps({"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 5}}),
+    ]
+    return "\n".join(lines)
+
+
+def test_unwrap_codex_jsonl_extracts_last_agent_message():
+    stream = "not-json progress noise\n" + _codex_stream("FINAL", extra_agent="earlier")
+    assert ai_reviewer._unwrap_codex_jsonl(stream) == "FINAL"   # last agent_message, noise skipped
+
+
+def test_unwrap_codex_jsonl_empty_when_no_agent_message():
+    stream = json.dumps({"type": "turn.failed", "error": "boom"})
+    assert ai_reviewer._unwrap_codex_jsonl(stream) == ""       # -> parse_findings returns ([], False)
+
+
+def test_review_codex_parses_jsonl_stream():
+    findings_json = json.dumps([{"file": "app/db.py", "severity": "high", "rule": "r", "description": "m"}])
+    with patch.object(ai_reviewer.shutil, "which", return_value="/usr/bin/codex"), \
+         patch.object(ai_reviewer.subprocess, "run",
+                      return_value=FakeProc(stdout=_codex_stream(findings_json))) as run:
+        findings, ok = review("some diff", STAGED, provider="codex-cli")
+
+    assert ok is True
+    assert findings[0]["source"] == "AI Review (Codex)"
+    assert findings[0]["severity"] == "high"
+    # routed to the codex command, non-interactive, prompt on stdin
+    argv = run.call_args.args[0]
+    assert "codex" in argv[0]
+    assert "exec" in argv and "--json" in argv and argv[-1] == "-"
+    assert run.call_args.kwargs["input"]
+
+
+def test_review_codex_missing_binary_fails_safe(capsys):
+    with patch.object(ai_reviewer.shutil, "which", return_value=None):
+        findings, ok = review("some diff", STAGED, provider="codex-cli")
+    assert findings == [] and ok is False
+    assert "codex" in capsys.readouterr().err
+
+
 def test_review_cli_floors_short_timeout():
     # scan passes the HTTP-tuned 20s; the CLI path must floor it (agent boot alone can
     # exceed 20s) so the review isn't spuriously skipped.
     captured = {}
 
-    def fake_call_cli(command, args, prompt, timeout, result_key="result", env=None):
+    def fake_call_cli(command, args, prompt, timeout, result_key="result", env=None, output_mode="envelope"):
         captured["timeout"] = timeout
         return "[]"
 
