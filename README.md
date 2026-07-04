@@ -18,7 +18,7 @@ CommitGate runs two scanners over your changes and merges their findings:
 
 | Scanner | Catches |
 |---------|---------|
-| [**Gitleaks**](https://github.com/gitleaks/gitleaks) | Known secret shapes — API keys, tokens, passwords that match standard patterns |
+| [![Gitleaks][gitleaks-badge]][gitleaks-link] | Known secret shapes — API keys, tokens, passwords that match standard patterns |
 | **AI Reviewer** | What regex missed — code understanding, private knowledge & data |
 
 ---
@@ -29,8 +29,8 @@ You choose which AI backs the reviewer. Either bring an API key, or run it on an
 
 | Type | Providers |
 |------|-----------|
-| **OpenAI-compatible API** (needs an API key) | OpenAI · Gemini · DeepSeek · Groq |
-| **AI Agents** (no API key — uses your local login) | Claude Code · Codex |
+| **OpenAI-compatible API** (needs an API key) | [![OpenAI][openai-badge]][openai-link] [![Gemini][gemini-badge]][gemini-link] [![DeepSeek][deepseek-badge]][deepseek-link] [![Groq][groq-badge]][groq-link] |
+| **AI Agents** (no API key — uses your local login) | [![Claude Code][claude-badge]][claude-link] [![Codex][codex-badge]][codex-link] |
 
 ---
 
@@ -263,3 +263,19 @@ Build a **CommitGate Security Gate** dashboard with these searches:
 [MIT](LICENSE) © 2026 Mike Ly
 
 CommitGate is free to use, modify, and distribute under the terms of the MIT License.
+
+<!-- provider badge + link definitions -->
+[openai-badge]: assets/badges/openai.svg
+[gemini-badge]: https://img.shields.io/badge/Gemini-8E75B2?logo=googlegemini&logoColor=white
+[deepseek-badge]: https://img.shields.io/badge/DeepSeek-4D6BFE?logo=deepseek&logoColor=white
+[groq-badge]: assets/badges/groq.svg
+[claude-badge]: https://img.shields.io/badge/Claude_Code-C15F3C?logo=claude&logoColor=white
+[codex-badge]: assets/badges/codex.svg
+[openai-link]: https://platform.openai.com
+[gemini-link]: https://aistudio.google.com/
+[deepseek-link]: https://platform.deepseek.com
+[groq-link]: https://console.groq.com
+[claude-link]: https://www.anthropic.com/claude-code
+[codex-link]: https://openai.com/codex/
+[gitleaks-badge]: assets/badges/gitleaks.svg
+[gitleaks-link]: https://gitleaks.org/
