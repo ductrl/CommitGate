@@ -411,3 +411,84 @@ def test_call_llm_hits_chat_completions_with_bearer():
     assert captured["url"] == "https://api.deepseek.com/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer secret-key"
     assert captured["json"]["model"] == "deepseek-chat"
+
+
+# --- prompt shaping from reporting.fields (output-token / latency win) ---------
+
+def test_build_system_prompt_requests_all_fields_by_default():
+    p = ai_reviewer.build_system_prompt()
+    assert '"category"' in p and '"description": str' in p and '"suggestion": str' in p
+    assert "Be specific in `description` and `suggestion`." in p
+
+
+def test_build_system_prompt_omits_disabled_output_fields():
+    p = ai_reviewer.build_system_prompt(
+        include_category=False, include_description=False, include_suggestion=False
+    )
+    # the three toggleable, model-generated fields are gone from the requested schema
+    assert '"category"' not in p
+    assert '"description": str' not in p
+    assert '"suggestion": str' not in p
+    # ...but the load-bearing fields the gate needs are ALWAYS requested
+    for keep in ('"rule": str', '"severity"', '"file": str', '"start_line"', '"end_line"', '"secret"'):
+        assert keep in p
+    assert "Be specific" not in p   # no prose fields left to be specific about
+
+
+def test_build_system_prompt_one_prose_field():
+    p = ai_reviewer.build_system_prompt(include_suggestion=False)
+    assert '"description": str' in p and '"suggestion": str' not in p
+    assert "Be specific in `description`." in p   # only the enabled prose field is named
+
+
+def test_review_prompt_shaped_by_report_fields():
+    # Turning off description/suggestion/category must drop them from what the model is asked
+    # to produce -- a shorter response is the whole point (output tokens dominate latency).
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, **kwargs):
+        captured["system"] = json["messages"][0]["content"]
+        return FakeResponse("[]")
+
+    with patch.object(ai_reviewer.requests, "post", side_effect=fake_post):
+        review("some diff", STAGED, api_key="k", provider="deepseek",
+               report_fields={"category": False, "description": False, "suggestions": False})
+
+    assert '"description": str' not in captured["system"]
+    assert '"suggestion": str' not in captured["system"]
+    assert '"category"' not in captured["system"]
+    assert '"severity"' in captured["system"]     # load-bearing field still requested
+
+
+def test_review_defaults_to_full_prompt_when_fields_unset():
+    # report_fields omitted + a config with no reporting section -> fail open, request all.
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, **kwargs):
+        captured["system"] = json["messages"][0]["content"]
+        return FakeResponse("[]")
+
+    with patch("commitgate.config.load_config", return_value={"ai": {"provider": "deepseek"}}), \
+         patch.object(ai_reviewer, "ai_api_key", return_value="k"), \
+         patch.object(ai_reviewer.requests, "post", side_effect=fake_post):
+        review("some diff", STAGED)
+
+    assert '"description": str' in captured["system"]
+    assert '"suggestion": str' in captured["system"]
+
+
+def test_review_cli_prompt_shaped_by_report_fields():
+    # The CLI transport inlines the system prompt on stdin -> the shaping must reach it too.
+    captured = {}
+
+    def fake_call_cli(command, args, prompt, timeout, result_key="result", env=None, output_mode="envelope"):
+        captured["prompt"] = prompt
+        return "[]"
+
+    with patch.object(ai_reviewer, "call_cli", side_effect=fake_call_cli):
+        review("some diff", STAGED, provider="claude-cli",
+               report_fields={"category": False, "description": False, "suggestions": False})
+
+    assert '"suggestion": str' not in captured["prompt"]
+    assert '"description": str' not in captured["prompt"]
+    assert '"file": str' in captured["prompt"]     # load-bearing field survives

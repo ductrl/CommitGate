@@ -134,7 +134,8 @@ _UNICODE_SANITIZE = str.maketrans({
 def _sanitize(s: str) -> str:
     return s.translate(_UNICODE_SANITIZE)
 
-SYSTEM_PROMPT = """\
+# Fixed head of the reviewer prompt: role, focus list, severity rubric. build_system_prompt
+_SYSTEM_PROMPT_HEAD = """\
 You are a security code reviewer for a git pre-commit gate, given a STAGED DIFF.
 
 Gitleaks already catches standard secret patterns - do NOT duplicate that. Report other security issues: hardcoded internal hostnames/URLs/IPs, non-standard credentials, eval/exec or command/SQL injection, insecure deserialization, path traversal, SSRF, disabled TLS verification, weak crypto, non-cryptographic randomness for security values (tokens/passwords/reset codes), broad file permissions, missing cookie flags (HttpOnly/Secure/SameSite), verbose error/stack exposure, debug mode enabled, and sensitive-data leaks. Report minor issues too - rate them `low`, don't drop them; only skip non-security noise (style, formatting, performance, naming).
@@ -146,10 +147,54 @@ Set `severity` by what an attacker can actually reach in THIS diff, not hypothet
 - low: limited-impact hardening/info-disclosure (internal URLs, missing cookie flags, verbose errors, debug on), AND any hypothetical-only risk - input is hardcoded/config/constant, or it needs "if called with untrusted input" / "if a dependency were compromised" / is defense-in-depth. Still report it, just don't inflate.
 
 Respond with ONLY a JSON array (no prose, no code fences). Each element:
-{"rule": str, "category": str (sentence case, e.g. "Secret leak", "Hardcoded url", "Injection risk"), "severity": "low"|"medium"|"high"|"critical", "file": str, "start_line": int|null, "end_line": int|null, "secret": str|null, "description": str, "suggestion": str}
-
-Be specific in `description` and `suggestion`. The "file" must appear in the diff. If you find nothing, return [].
 """
+
+
+def build_system_prompt(
+    *,
+    include_category: bool = True,
+    include_description: bool = True,
+    include_suggestion: bool = True,
+) -> str:
+    parts = ['"rule": str']
+    if include_category:
+        parts.append('"category": str (sentence case, e.g. "Secret leak", "Hardcoded url", "Injection risk")')
+    parts += [
+        '"severity": "low"|"medium"|"high"|"critical"',
+        '"file": str',
+        '"start_line": int|null',
+        '"end_line": int|null',
+        '"secret": str|null',
+    ]
+    if include_description:
+        parts.append('"description": str')
+    if include_suggestion:
+        parts.append('"suggestion": str')
+    schema = "{" + ", ".join(parts) + "}"
+
+    specifics = [
+        name for name, on in (("description", include_description), ("suggestion", include_suggestion)) if on
+    ]
+    if specifics:
+        be_specific = f"Be specific in {' and '.join(f'`{s}`' for s in specifics)}. "
+    else:
+        be_specific = ""
+
+    # When any output field is pruned, models tend to re-add it out of habit (esp. description).
+    # An explicit "exactly these keys" directive makes the token savings actually stick.
+    pruned = not (include_category and include_description and include_suggestion)
+    exact = "Use EXACTLY the keys shown above, no others. " if pruned else ""
+
+    return (
+        f"{_SYSTEM_PROMPT_HEAD}"
+        f"{schema}\n\n"
+        f'{exact}{be_specific}The "file" must appear in the diff. If you find nothing, return [].\n'
+    )
+
+
+# Default prompt with every field requested. call_llm falls back to this; review() builds a
+# config-driven one per call so a user's reporting.fields toggles shape the model's output.
+SYSTEM_PROMPT = build_system_prompt()
 
 
 def ai_api_key() -> Optional[str]:
@@ -194,6 +239,7 @@ def call_llm(
     max_tokens: int = DEFAULT_MAX_TOKENS,
     extra_body: Optional[dict] = None,
     max_tokens_key: str = "max_tokens",
+    system_prompt: Optional[str] = None,
 ) -> str:
     """Single provider-agnostic call to an OpenAI-compatible /chat/completions endpoint.
 
@@ -209,7 +255,7 @@ def call_llm(
     body = {
         "model": model,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt or SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
         "temperature": 0,
@@ -474,6 +520,19 @@ def parse_findings(
     return findings, parse_ok
 
 
+def _resolve_report_fields() -> dict:
+    """Read `reporting.fields` from commitgate.yaml so the prompt can request only the fields
+    the user wants shown. Fail open -- any error, or a config without a reporting section,
+    returns {}, which build_system_prompt reads as 'request everything'. Pruning a field is a
+    speed optimization; never worth risking a dropped finding when config resolution hiccups."""
+    try:
+        from commitgate.config import load_config
+        fields = load_config().get("reporting", {}).get("fields", {})
+        return fields if isinstance(fields, dict) else {}
+    except Exception:  # noqa: BLE001 - a config hiccup must not break the review
+        return {}
+
+
 def _resolve_provider(provider: Optional[str] = None) -> dict:
     """Return the PROVIDER_CONFIG entry for `provider`; when None, read `ai.provider`
     from commitgate.yaml. Raises ValueError on an unknown provider so a misconfig fails loud, 
@@ -511,6 +570,7 @@ def review(
     extra_body: Optional[dict] = None,
     max_tokens_key: Optional[str] = None,
     provider_label: Optional[str] = None,
+    report_fields: Optional[dict] = None,
 ) -> Tuple[List[dict], bool]:
     """Run the AI review over a diff. Returns `(findings, ok)`; never raises on an LLM error.
 
@@ -525,6 +585,14 @@ def review(
     if not diff or not diff.strip():
         return [], True   # nothing to review is not a failure
 
+    # Shape which output fields the model emits (speed: fewer output tokens). 
+    if report_fields is None:
+        report_fields = _resolve_report_fields()
+    system_prompt = build_system_prompt(
+        include_category=report_fields.get("category", True),
+        include_description=report_fields.get("description", True),
+        include_suggestion=report_fields.get("suggestions", True),
+    )
     prompt = build_prompt(diff)
 
     # Resolve the configured provider unless the caller pinned an explicit HTTP endpoint.
@@ -540,7 +608,7 @@ def review(
         try:
             raw = call_cli(
                 pconf["command"], pconf["args"],
-                f"{SYSTEM_PROMPT}\n\n{prompt}", timeout,
+                f"{system_prompt}\n\n{prompt}", timeout,
                 pconf.get("result_key", "result"),
                 env=pconf.get("env"),
                 output_mode=pconf.get("output", "envelope"),
@@ -569,7 +637,8 @@ def review(
         return [], False
 
     try:
-        raw = call_llm(base_url, model, api_key, prompt, timeout, max_tokens, extra_body, max_tokens_key)
+        raw = call_llm(base_url, model, api_key, prompt, timeout, max_tokens, extra_body, max_tokens_key,
+                       system_prompt=system_prompt)
     except Exception as exc:  # noqa: BLE001 - fail-safe must catch everything
         _warn_ai_skipped(exc)
         return [], False

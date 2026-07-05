@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 SEVERITY_RANK: dict[str, int] = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
@@ -16,24 +16,55 @@ def severity_color(severity: str) -> str:
         return "white"
 
 
-def format_finding(finding: dict, include_suggestion: bool = False) -> str:
+def format_finding(
+    finding: dict,
+    fields: Optional[dict] = None,
+    include_suggestion: bool = False,
+) -> str:
+    if fields is None:
+        output = (
+            f"\t- Source: {finding.get('source')}\n"
+            f"\t- Category: {finding.get('category')}\n"
+            f"\t- Severity: {finding.get('severity')}\n"
+            f"\t- File: {finding.get('file')}\n"
+            f"\t- Location: Line {finding.get('start_line')} to {finding.get('end_line')}\n"
+            f"\t- Description: {finding.get('description')}"
+        )
+        if include_suggestion and finding.get("suggestion"):
+            output += f"\n\t- Suggestion: {finding.get('suggestion')}"
+        return output
+
+    lines: List[str] = []
+    if fields.get("source", True) and finding.get("source"):
+        lines.append(f"\t- Source: {finding.get('source')}")
+    if fields.get("category", True) and finding.get("category"):
+        lines.append(f"\t- Category: {finding.get('category')}")
+    lines.append(f"\t- Severity: {finding.get('severity')}")
+    lines.append(f"\t- File: {finding.get('file')}")
+    lines.append(f"\t- Location: Line {finding.get('start_line')} to {finding.get('end_line')}")
+    if fields.get("description", True) and finding.get("description"):
+        lines.append(f"\t- Description: {finding.get('description')}")
+    if fields.get("suggestions", True) and finding.get("suggestion"):
+        lines.append(f"\t- Suggestion: {finding.get('suggestion')}")
+    return "\n".join(lines)
+
+
+def filter_by_min_severity(
+    findings: List[dict],
+    min_severity: str = "low",
+    block_severity: str = "high",
+) -> List[dict]:
     """
-    Parse the finding into a readable rich format so that it can be printed by the CLI.
+    Drop findings below ``min_severity``
     """
-
-    output = (
-        f"\t- Source: {finding.get('source')}\n"
-        f"\t- Category: {finding.get('category')}\n"
-        f"\t- Severity: {finding.get('severity')}\n"
-        f"\t- File: {finding.get('file')}\n"
-        f"\t- Location: Line {finding.get('start_line')} to {finding.get('end_line')}\n"
-        f"\t- Description: {finding.get('description')}"
-    )
-
-    if include_suggestion and finding.get("suggestion"):
-        output += f"\n\t- Suggestion: {finding.get('suggestion')}"
-
-    return output
+    floor = SEVERITY_RANK.get(str(min_severity or "low").lower(), 0)
+    block = SEVERITY_RANK.get(str(block_severity or "high").lower(), 2)
+    kept: List[dict] = []
+    for finding in findings:
+        rank = SEVERITY_RANK.get(str(finding.get("severity", "low")).lower(), 0)
+        if rank >= floor or rank >= block:
+            kept.append(finding)
+    return kept
 
 
 def remove_dup(findings: List[dict]) -> List[dict]:
