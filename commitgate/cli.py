@@ -50,7 +50,7 @@ def scan(
     config = load_config()
 
     timeout = config["ai"]["timeout"]
-    show_suggestions = config["reporting"]["show_suggestions"]
+    show_suggestions = config["reporting"]["fields"]["suggestions"]
     ai_enabled = config["ai"]["enabled"]
 
     # SECURITY SCAN

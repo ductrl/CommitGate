@@ -6,6 +6,7 @@ import yaml
 CONFIG_FILE_NAME = "commitgate.yaml"
 
 DEFAULT_CONFIG = {
+    "enabled": True,
     "ai": {
         "enabled": True,
         "provider": "deepseek",
@@ -15,9 +16,71 @@ DEFAULT_CONFIG = {
         "block_severity": "high",
     },
     "reporting": {
-        "show_suggestions": True,
+        "min_severity": "low",
+        "fields": {
+            "source": True,
+            "category": True,
+            "severity": True,
+            "file": True,
+            "location": True,
+            "description": True,
+            "suggestions": True,
+        },
     },
 }
+
+DEFAULT_CONFIG_YAML = """\
+# CommitGate configuration
+
+# Enable or disable CommitGate for this repository.
+enabled: true
+
+ai:
+  # Enable AI-powered security review.
+  enabled: true
+
+  # AI provider to use.
+  # Option 1: (API Key, AI_KEY in .env): openai, deepseek, gemini, groq (Tip: groq offers a free API key - get one at https://console.groq.com)
+  # Option 2: Claude Code or Codex (no API key): claude-cli, codex-cli
+  provider: deepseek
+
+  # Maximum time (seconds) allowed for AI review.
+  timeout: 20
+
+policy:
+  # Minimum severity that blocks a commit.
+  # Options: low, medium, high, critical
+  block_severity: high
+
+reporting:    
+  # Minimum severity shown in CommitGate output.
+  # Options: low, medium, high, critical
+  # Example: medium shows medium, high, and critical findings, but hides low findings.
+  min_severity: low
+
+  # Control which fields are displayed for each finding.
+  fields:
+    source: true
+    category: true
+    severity: true
+    file: true
+    location: true
+    description: true
+    suggestions: true
+"""
+
+# VALID INPUTS FOR VALIDATION
+VALID_PROVIDERS = ["deepseek", "openai", "gemini", "groq", "claude-cli", "codex-cli"]
+VALID_SEVERITIES = ["low", "medium", "high", "critical"]
+VALID_REPORTING_FIELDS = [
+    "source",
+    "category",
+    "severity",
+    "file",
+    "location",
+    "description",
+    "suggestions",
+]
 
 def get_config_path() -> Path:
     """
@@ -42,44 +105,55 @@ def create_default_config() -> Path:
     if path.exists():
         return path
     
-    provider_help = (
-        "  # Option 1, (API Key, AI_KEY in .env): openai, deepseek, gemini, groq"
-        " (Tip: groq offers a free API key - get one at https://console.groq.com)\n"
-        "  # Option 2, Claude Code or Codex (no API key): claude-cli, codex-cli\n"
-    )
-    body = yaml.safe_dump(DEFAULT_CONFIG, sort_keys=False)
-    body = body.replace("  provider:", provider_help + "  provider:", 1)
-
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(body)
-
+    path.write_text(DEFAULT_CONFIG_YAML, encoding="utf-8")
     return path
 
 def load_config() -> dict:
     """
-    Create a default commitgate.yaml file if one does not already exist.
+    Load CommitGate's configuration.
+
+    If commitgate.yaml does not exist, or is empty, the default
+    configuration is returned.
 
     Returns:
-        Path to the config file.
-
-    Notes:
-        This function does not overwrite an existing config file.
+        A complete configuration dictionary.
     """
     path = get_config_path()
 
     if not path.exists():
-        return deepcopy(DEFAULT_CONFIG)
+        config = deepcopy(DEFAULT_CONFIG)
+    else:
+        with open(path, "r", encoding="utf-8") as f:
+            user_config = yaml.safe_load(f) 
+        
+        if not user_config:
+            config = deepcopy(DEFAULT_CONFIG)
+        elif not isinstance(user_config, dict):
+            raise ValueError("commitgate.yaml must contain a YAML dictionary")
+        else:
+            config = merge_with_defaults(user_config)
     
-    with open(path, "r", encoding="utf-8") as f:
-        user_config = yaml.safe_load(f) 
+    validate_config(config)
+    return config
+
+def merge_dicts(default_dict: dict, user_dict: dict) -> dict:
+    """
+    Helper function: Recursive dictionary merge
+    """
+    result = deepcopy(default_dict)
+
+    for key, value in user_dict.items():
+        # if the current subfield is also a dictionary, then we call the merge function
+        if (
+            key in result
+            and isinstance(result[key], dict)
+            and isinstance(value, dict)
+        ):
+            result[key] = merge_dicts(result[key], value)
+        else:
+            result[key] = value
     
-    if not user_config:
-        return deepcopy(DEFAULT_CONFIG)
-    
-    if not isinstance(user_config, dict):
-        raise ValueError("commitgate.yaml must contain a YAML dictionary")
-    
-    return merge_with_defaults(user_config=user_config)
+    return result
 
 def merge_with_defaults(user_config: dict) -> dict:
     """
@@ -94,15 +168,41 @@ def merge_with_defaults(user_config: dict) -> dict:
     Returns:
         A complete configuration dictionary.
     """
-    config = deepcopy(DEFAULT_CONFIG)
+    return merge_dicts(DEFAULT_CONFIG, user_config)
 
-    for section, values in user_config.items():
-        if isinstance(values, dict) and section in config:
-            config[section] = {
-                **config[section],
-                **values,
-            }
-        else:
-            config[section] = values
+def validate_config(config: dict) -> None:
+    if not isinstance(config["enabled"], bool):
+        raise ValueError("enabled must be true or false")
+    
+    if not isinstance(config.get("policy"), dict):
+        raise ValueError("policy must be a dictionary")
 
-    return config
+    if not isinstance(config.get("reporting"), dict):
+        raise ValueError("reporting must be a dictionary")
+    
+    if not isinstance(config["ai"]["enabled"], bool):
+        raise ValueError("ai.enabled must be true or false")
+    
+    if config["ai"]["provider"] not in VALID_PROVIDERS:
+        raise ValueError(f"ai.provider must be one of: {', '.join(VALID_PROVIDERS)}")
+    
+    if not isinstance(config["ai"]["timeout"], int) or config["ai"]["timeout"] <= 0:
+        raise ValueError("ai.timeout must be a positive integer")
+    
+    if config["policy"]["block_severity"] not in VALID_SEVERITIES:
+        raise ValueError(f"policy.block_severity must be one of: {', '.join(VALID_SEVERITIES)}")
+    
+    if config["reporting"]["min_severity"] not in VALID_SEVERITIES:
+        raise ValueError(f"reporting.min_severity must be one of: {', '.join(VALID_SEVERITIES)}")
+    
+    fields = config["reporting"]["fields"]
+
+    if not isinstance(fields, dict):
+        raise ValueError("reporting.fields must be a dictionary")
+
+    for field_name, enabled in fields.items():
+        if field_name not in VALID_REPORTING_FIELDS:
+            raise ValueError(f"Unknown reporting field: reporting.fields.{field_name}")
+        
+        if not isinstance(enabled, bool):
+            raise ValueError(f"reporting.fields.{field_name} must be true or false")
