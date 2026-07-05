@@ -26,6 +26,18 @@ def scan(
         help="Maximum time (seconds) allowed for AI review.",
     )
 ):
+    # LOAD CONFIG
+
+    config = load_config()
+
+    if not config["enabled"]:
+        print("[yellow]CommitGate disabled in commitgate.yaml[/yellow]")
+        raise typer.Exit(0)
+
+    timeout = config["ai"]["timeout"]
+    show_suggestions = config["reporting"]["fields"]["suggestions"]
+    ai_enabled = config["ai"]["enabled"]
+
     # HANDLE SKIP
     skip = os.environ.get("SKIP", "")
     if skip == "commitgate":
@@ -44,14 +56,6 @@ def scan(
             raise typer.Exit(1)
     else:
         raise ValueError(f"Invalid hook type: {hook_type}")
-
-    # LOAD CONFIGS
-
-    config = load_config()
-
-    timeout = config["ai"]["timeout"]
-    show_suggestions = config["reporting"]["fields"]["suggestions"]
-    ai_enabled = config["ai"]["enabled"]
 
     # SECURITY SCAN
 
