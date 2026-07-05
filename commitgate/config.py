@@ -82,6 +82,13 @@ VALID_REPORTING_FIELDS = [
     "suggestions",
 ]
 
+SEVERITY_ORDER = {
+    "low": 0,
+    "medium": 1,
+    "high": 2,
+    "critical": 3,
+}
+
 def get_config_path() -> Path:
     """
     Return the expected path of the CommitGate config file.
@@ -194,6 +201,12 @@ def validate_config(config: dict) -> None:
     
     if config["reporting"]["min_severity"] not in VALID_SEVERITIES:
         raise ValueError(f"reporting.min_severity must be one of: {', '.join(VALID_SEVERITIES)}")
+    
+    block_severity = config["policy"]["block_severity"]
+    min_severity = config["reporting"]["min_severity"]
+
+    if SEVERITY_ORDER[min_severity] > SEVERITY_ORDER[block_severity]:
+        raise ValueError("reporting.min_severity must be equal to or lower than policy.block_severity, otherwise blocking findings could be hidden")
     
     fields = config["reporting"]["fields"]
 
