@@ -1,6 +1,6 @@
 # CommitGate
 
-An AI-powered security gate for Git. On every `git commit` — or every `git push` — CommitGate scans your changes and **blocks them** before secrets or risky code ever reach your history.
+An AI-powered security gate for Git. On every `git commit` or every `git push`, CommitGate scans your changes and **blocks them** before secrets or risky code ever reach your history.
 
 ---
 
@@ -25,7 +25,7 @@ CommitGate runs two scanners over your changes and merges their findings:
 
 ## Available Providers
 
-You choose which AI backs the reviewer. Either bring an API key, or run it on an AI agent you already have logged in — no key required.
+These are the available providers that we support for the AI reviewer. You can choose between use an OpenAI-compatible API key (recommended) or use your own AI agent (Claude or Codex).
 
 | Type | Providers |
 |------|-----------|
@@ -53,7 +53,26 @@ See [`docs/architecture.md`](docs/architecture.md) for the module-by-module desi
 |-------------|----------------|
 | **Python ≥ 3.10** | [python.org](https://www.python.org/downloads/) |
 | **Git** | [git-scm.com](https://git-scm.com/downloads) |
-| **Gitleaks** (separate binary, *not* installed by `pip`) | Windows: `winget install gitleaks` · macOS: `brew install gitleaks` · Linux: download the [release binary](https://github.com/gitleaks/gitleaks/releases) onto your `PATH` |
+| **Gitleaks** (separate binary, *not* installed by `pip`) | See installation instructions below. |
+
+#### Installing Gitleaks
+
+- **Windows**
+  ```powershell
+  winget install gitleaks
+  ```
+
+- **macOS**
+  ```bash
+  brew install gitleaks
+  ```
+
+- **Linux**
+  - Download the latest release from the
+    [Gitleaks Releases](https://github.com/gitleaks/gitleaks/releases)
+  - Place the binary somewhere on your `PATH`
+
+- For additional installation methods (Snap, Docker, package managers, etc.), see the official [Gitleaks installation guide](https://github.com/gitleaks/gitleaks#installing).
 
 Confirm Gitleaks is ready:
 
@@ -112,14 +131,14 @@ ai:
   provider: claude-cli   # or codex-cli
 ```
 
-**Option C — No AI** (Gitleaks only, nothing leaves your machine)
+**Option C — No AI** (Gitleaks only)
 
 ```yaml
 ai:
   enabled: false
 ```
 
-Commit `commitgate.yaml` so your whole team shares the same gate policy — it contains no secrets. That's it; your next commit (or push) is gated.
+It is recommended to commit `commitgate.yaml` so your whole team shares the same gate policy. The file doesn't and shouldn't include any secrets.
 
 ---
 
@@ -183,9 +202,9 @@ SKIP=commitgate git commit -m "your message"
 
 ## Data Privacy
 
-When the AI Reviewer is enabled, CommitGate sends your **staged code diffs to the AI provider you configure** in `commitgate.yaml`. This applies to the AI Agents too (Claude Code → Anthropic, Codex → OpenAI) — they need no API key, but your diff is still sent to their provider, so they are *not* air-gapped options.
+When the AI Reviewer is enabled, CommitGate sends your **staged code diffs to the AI provider you configure** in `commitgate.yaml`. This applies to the AI Agents too (Claude Code → Anthropic, Codex → OpenAI), as your diff is still sent to their provider, so they are *not* air-gapped options.
 
-Do not use the AI Reviewer on confidential or proprietary code without your organization's authorization. Set `ai.enabled: false` to run Gitleaks only — no data leaves your machine. Fully local LLM support (Ollama) is on the roadmap.
+**Do not** use the AI Reviewer on confidential or proprietary code without your organization's authorization. Set `ai.enabled: false` to run Gitleaks only. Fully local LLM support (Ollama) is on the roadmap.
 
 ---
 
