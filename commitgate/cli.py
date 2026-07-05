@@ -35,7 +35,7 @@ def scan(
         raise typer.Exit(0)
 
     timeout = config["ai"]["timeout"]
-    show_suggestions = config["reporting"]["fields"]["suggestions"]
+    fields = config["reporting"]["fields"]
     ai_enabled = config["ai"]["enabled"]
 
     # HANDLE SKIP
@@ -98,10 +98,7 @@ def scan(
             f"[/{sev_color}]"
         )
 
-        if finding.get("suggestion"):
-            finding_output = format_finding(finding=finding, include_suggestion=show_suggestions)
-        else:
-            finding_output = format_finding(finding=finding)
+        finding_output = format_finding(finding=finding, fields=fields)
 
         print(finding_output)
         print()

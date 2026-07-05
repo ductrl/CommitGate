@@ -19,7 +19,6 @@ def severity_color(severity: str) -> str:
 def format_finding(
     finding: dict,
     fields: Optional[dict] = None,
-    include_suggestion: bool = False,
 ) -> str:
     if fields is None:
         output = (
@@ -30,8 +29,6 @@ def format_finding(
             f"\t- Location: Line {finding.get('start_line')} to {finding.get('end_line')}\n"
             f"\t- Description: {finding.get('description')}"
         )
-        if include_suggestion and finding.get("suggestion"):
-            output += f"\n\t- Suggestion: {finding.get('suggestion')}"
         return output
 
     lines: List[str] = []
