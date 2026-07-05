@@ -118,6 +118,14 @@ def scan(
     raise typer.Exit(code=1)
     
 @app.command()
+def reset_config():
+    """
+    Restore commitgate.yaml to the default configuration.
+    """
+    config_file = create_default_config(overwrite=True)
+    print(f"[green]Restored default config file:[/green] {config_file}")
+
+@app.command()
 def install_hook():
     hook_path = install_git_hook()
 
