@@ -20,9 +20,9 @@ DEFAULT_CONFIG = {
         "fields": {
             "source": True,
             "category": True,
-            "severity": True,
-            "file": True,
-            "location": True,
+            # "severity": True,
+            # "file": True,
+            # "location": True,
             "description": True,
             "suggestions": True,
         },
@@ -58,13 +58,10 @@ reporting:
   # Example: medium shows medium, high, and critical findings, but hides low findings.
   min_severity: low
 
-  # Control which fields are displayed for each finding.
+  # Control which optional fields are displayed for each finding.
   fields:
     source: true
     category: true
-    severity: true
-    file: true
-    location: true
     description: true
     suggestions: true
 """
@@ -75,9 +72,6 @@ VALID_SEVERITIES = ["low", "medium", "high", "critical"]
 VALID_REPORTING_FIELDS = [
     "source",
     "category",
-    "severity",
-    "file",
-    "location",
     "description",
     "suggestions",
 ]
