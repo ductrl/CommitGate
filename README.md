@@ -1,18 +1,27 @@
+<div align="center">
+
 # CommitGate
 
-An AI-powered security gate for Git. On every `git commit` or every `git push`, CommitGate scans your changes and **blocks them** before secrets or risky code ever reach your history.
+An AI-powered security gate for Git. On every `git commit` or every `git push`.
+
+CommitGate scans your changes and **blocks them** before secrets or risky code ever reach your history.
+
+[How it works](#how-it-works) · [Providers](#providers) · [Setup](#setup) · [How to use](#how-to-use) · [Configuration](#configuration) · [Data Privacy](#data-privacy) · [Splunk Logging](#splunk-audit-logging-optional)
+
+</div>
 
 ---
 
 ## Demo
 
-![CommitGate Demo](assets/demo.gif)
-
-*CommitGate blocking a vulnerable commit before it reaches Git history.*
+<div align="center">
+  <img src="assets/demo.gif" alt="CommitGate Demo">
+  <p><em>CommitGate blocking a vulnerable commit before it reaches Git history.</em></p>
+</div>
 
 ---
 
-## The scanners
+## How it works
 
 CommitGate runs two scanners over your changes and merges their findings:
 
@@ -21,9 +30,16 @@ CommitGate runs two scanners over your changes and merges their findings:
 | [![Gitleaks][gitleaks-badge]][gitleaks-link] | Known secret shapes — API keys, tokens, passwords that match standard patterns |
 | **AI Reviewer** | What regex missed — code understanding, private knowledge & data |
 
+1. You run `git commit` (or `git push`). The installed Git hook hands your changes to CommitGate.
+2. Two scanners run over the diff — **Gitleaks** (known secret patterns) and the **AI Reviewer** (everything else).
+3. The **decision engine** merges the findings and rules **allow**, **warn**, or **block**.
+4. You get a report in your terminal. On **block**, the commit or push is stopped; otherwise it proceeds.
+
+See [`docs/architecture.md`](docs/architecture.md) for the module-by-module design.
+
 ---
 
-## Available Providers
+## Providers
 
 These are the available providers that we support for the AI reviewer. You can choose between use an OpenAI-compatible API key (recommended) or use your own AI agent (Claude or Codex).
 
@@ -31,17 +47,6 @@ These are the available providers that we support for the AI reviewer. You can c
 |------|-----------|
 | **OpenAI-compatible API** (needs an API key) | [![OpenAI][openai-badge]][openai-link] [![Gemini][gemini-badge]][gemini-link] [![DeepSeek][deepseek-badge]][deepseek-link] [![Groq][groq-badge]][groq-link] |
 | **AI Agents** (no API key — uses your local login) | [![Claude Code][claude-badge]][claude-link] [![Codex][codex-badge]][codex-link] |
-
----
-
-## How it works
-
-1. You run `git commit` (or `git push`). The installed Git hook hands your changes to CommitGate.
-2. Two scanners run over the diff — **Gitleaks** (known secret patterns) and the **AI Reviewer** (everything else).
-3. The **decision engine** merges the findings and rules **allow**, **warn**, or **block**.
-4. You get a report in your terminal. On **block**, the commit or push is stopped; otherwise it proceeds.
-
-See [`docs/architecture.md`](docs/architecture.md) for the module-by-module design.
 
 ---
 
@@ -215,15 +220,15 @@ The full file, annotated:
 enabled: true
 
 ai:
-  # Enable the AI Reviewer (Gitleaks still runs when false).
+  # Enable AI-powered security review.
   enabled: true
 
-  # AI provider — see "Set up the AI Reviewer" above.
-  #   API key:  openai, deepseek, gemini, groq
-  #   AI agent: claude-cli, codex-cli
+  # AI provider to use.
+  # Option 1: (API Key, AI_KEY in .env): openai, deepseek, gemini, groq (Tip: groq offers a free API key - at https://console.groq.com)
+  # Option 2: Claude Code or Codex (no API key): claude-cli, codex-cli
   provider: deepseek
 
-  # Max seconds for AI review; on timeout the deterministic gate continues.
+  # Maximum time (seconds) allowed for AI review.
   timeout: 20
 
 policy:
@@ -232,27 +237,19 @@ policy:
   block_severity: high
 
 reporting:
-  # Minimum severity shown in output. Findings below it are hidden.
-  # Must be <= block_severity, so a blocking finding is never hidden.
+  # Minimum severity shown in CommitGate output.
+  # Must be <= block_severity, so a blocking finding is never hidden
   # Options: low, medium, high, critical
+  # Example: medium shows medium, high, and critical findings, but hides low findings.
   min_severity: low
 
-  # Show or hide individual fields on each finding in the report.
+  # Control which optional fields are displayed for each finding.
   fields:
     source: true
     category: true
     description: true
     suggestions: true
 ```
-
-| Option | Default | What it does |
-|--------|---------|--------------|
-| `enabled` | `true` | Master switch — `false` turns CommitGate off for this repo (the hook exits `0` without scanning). |
-| `ai.enabled` | `true` | `false` runs Gitleaks only — no diff leaves your machine. |
-| `ai.provider` | `deepseek` | Which AI reviewer to use — see [Set up the AI Reviewer](#4-set-up-the-ai-reviewer). |
-| `ai.timeout` | `20` | Seconds allowed for AI review; on timeout the deterministic gate still runs. |
-| `policy.block_severity` | `high` | Findings at or above this severity **block**; below it **warn**. |
-| `reporting.min_severity` | `low` | Hides findings below this severity from the report. Capped at `block_severity`. |
 
 ---
 
