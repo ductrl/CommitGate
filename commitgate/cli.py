@@ -4,7 +4,7 @@ import os
 
 from commitgate.git_utils import install_git_hook, get_staged_diff, get_staged_files, get_pre_push_changes, PrePushHookError
 from commitgate.gitleaks_runner import run_gitleaks_scan
-from commitgate.report_generator import format_finding, severity_color, remove_dup
+from commitgate.report_generator import format_finding, severity_color, remove_dup, filter_by_min_severity
 from commitgate.ai_reviewer import review
 from commitgate.config import create_default_config, load_config
 from commitgate.decision_engine import decide
@@ -37,6 +37,8 @@ def scan(
     timeout = config["ai"]["timeout"]
     fields = config["reporting"]["fields"]
     ai_enabled = config["ai"]["enabled"]
+    min_severity = config["reporting"]["min_severity"]
+    block_severity = config["policy"]["block_severity"]
 
     # HANDLE SKIP
     skip = os.environ.get("SKIP", "")
@@ -72,7 +74,8 @@ def scan(
         print("[yellow]AI review failed or returned an unusable response.[/yellow]")
         print("[yellow]Continuing with deterministic checks only.[/yellow]")
 
-    # No secrets and vulnerabilities found
+    all_findings = filter_by_min_severity(all_findings, min_severity, block_severity)
+
     if not all_findings:
         if not ai_enabled:
             print("[yellow]AI review disabled by config.[/yellow]")
