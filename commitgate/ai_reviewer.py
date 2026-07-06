@@ -155,6 +155,7 @@ def build_system_prompt(
     include_category: bool = True,
     include_description: bool = True,
     include_suggestion: bool = True,
+    min_severity: str = "low",
 ) -> str:
     parts = ['"rule": str']
     if include_category:
@@ -185,10 +186,24 @@ def build_system_prompt(
     pruned = not (include_category and include_description and include_suggestion)
     exact = "Use EXACTLY the keys shown above, no others. " if pruned else ""
 
+    # Two-step, to stop severity inflation: rate honestly FIRST, THEN drop below-threshold. Told
+    # "only report >= X", a model bumps a low to X to keep reporting it instead of dropping it -
+    # and there's no post-hoc net for that (once it calls a low "medium", the finding IS a medium).
+    # So forbid raising severity explicitly; the drop must act on the finding's honest rating.
+    threshold = ""
+    if str(min_severity).lower() in ("medium", "high", "critical"):
+        threshold = (
+            f"Severity gate: first assign each finding its honest severity using the rubric above; "
+            f"THEN drop any finding whose honest severity is below {min_severity} and omit it entirely. "
+            f"Never raise a finding's severity to keep it - if its true severity is below "
+            f"{min_severity}, it must not appear in the output "
+            f"(severity order: low < medium < high < critical). "
+        )
+
     return (
         f"{_SYSTEM_PROMPT_HEAD}"
         f"{schema}\n\n"
-        f'{exact}{be_specific}The "file" must appear in the diff. If you find nothing, return [].\n'
+        f'{exact}{be_specific}{threshold}The "file" must appear in the diff. If you find nothing, return [].\n'
     )
 
 
@@ -533,6 +548,18 @@ def _resolve_report_fields() -> dict:
         return {}
 
 
+def _resolve_min_severity() -> str:
+    """Read `reporting.min_severity` from commitgate.yaml so the prompt can tell the model to
+    skip sub-threshold findings (fewer output tokens = faster).
+    """
+    try:
+        from commitgate.config import load_config
+        sev = load_config().get("reporting", {}).get("min_severity", "low")
+        return sev if sev in ("low", "medium", "high", "critical") else "low"
+    except Exception: 
+        return "low"
+
+
 def _resolve_provider(provider: Optional[str] = None) -> dict:
     """Return the PROVIDER_CONFIG entry for `provider`; when None, read `ai.provider`
     from commitgate.yaml. Raises ValueError on an unknown provider so a misconfig fails loud, 
@@ -571,6 +598,7 @@ def review(
     max_tokens_key: Optional[str] = None,
     provider_label: Optional[str] = None,
     report_fields: Optional[dict] = None,
+    min_severity: Optional[str] = None,
 ) -> Tuple[List[dict], bool]:
     """Run the AI review over a diff. Returns `(findings, ok)`; never raises on an LLM error.
 
@@ -585,13 +613,15 @@ def review(
     if not diff or not diff.strip():
         return [], True   # nothing to review is not a failure
 
-    # Shape which output fields the model emits (speed: fewer output tokens). 
     if report_fields is None:
         report_fields = _resolve_report_fields()
+    if min_severity is None:
+        min_severity = _resolve_min_severity()
     system_prompt = build_system_prompt(
         include_category=report_fields.get("category", True),
         include_description=report_fields.get("description", True),
         include_suggestion=report_fields.get("suggestions", True),
+        min_severity=min_severity,
     )
     prompt = build_prompt(diff)
 

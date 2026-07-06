@@ -451,7 +451,7 @@ def test_review_prompt_shaped_by_report_fields():
         return FakeResponse("[]")
 
     with patch.object(ai_reviewer.requests, "post", side_effect=fake_post):
-        review("some diff", STAGED, api_key="k", provider="deepseek",
+        review("some diff", STAGED, api_key="k", provider="deepseek", min_severity="low",
                report_fields={"category": False, "description": False, "suggestions": False})
 
     assert '"description": str' not in captured["system"]
@@ -486,9 +486,41 @@ def test_review_cli_prompt_shaped_by_report_fields():
         return "[]"
 
     with patch.object(ai_reviewer, "call_cli", side_effect=fake_call_cli):
-        review("some diff", STAGED, provider="claude-cli",
+        review("some diff", STAGED, provider="claude-cli", min_severity="low",
                report_fields={"category": False, "description": False, "suggestions": False})
 
     assert '"suggestion": str' not in captured["prompt"]
     assert '"description": str' not in captured["prompt"]
     assert '"file": str' in captured["prompt"]     # load-bearing field survives
+
+
+# --- prompt-level min_severity cut (the real latency lever: the model never generates them) ---
+
+def test_build_system_prompt_no_threshold_at_low():
+    # "low" == report everything -> no severity gate (default prompt stays unchanged).
+    assert "Severity gate" not in ai_reviewer.build_system_prompt(min_severity="low")
+
+
+def test_build_system_prompt_adds_min_severity_threshold():
+    # The gate must rate-first-then-drop and forbid inflation, not just say "report >= X"
+    # (which makes the model bump lows up to clear the bar).
+    p = ai_reviewer.build_system_prompt(min_severity="high")
+    assert "Severity gate" in p
+    assert "below high" in p
+    assert "Never raise a finding's severity" in p
+
+
+def test_review_threads_min_severity_into_prompt():
+    # review() must push min_severity into the system prompt so the model omits sub-threshold
+    # findings at the source -- fewer generated findings is where the latency win comes from.
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, **kwargs):
+        captured["system"] = json["messages"][0]["content"]
+        return FakeResponse("[]")
+
+    with patch.object(ai_reviewer.requests, "post", side_effect=fake_post):
+        review("some diff", STAGED, api_key="k", provider="deepseek", min_severity="high")
+
+    assert "Severity gate" in captured["system"]
+    assert "below high" in captured["system"]
