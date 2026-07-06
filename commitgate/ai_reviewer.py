@@ -186,10 +186,7 @@ def build_system_prompt(
     pruned = not (include_category and include_description and include_suggestion)
     exact = "Use EXACTLY the keys shown above, no others. " if pruned else ""
 
-    # Two-step, to stop severity inflation: rate honestly FIRST, THEN drop below-threshold. Told
-    # "only report >= X", a model bumps a low to X to keep reporting it instead of dropping it -
-    # and there's no post-hoc net for that (once it calls a low "medium", the finding IS a medium).
-    # So forbid raising severity explicitly; the drop must act on the finding's honest rating.
+    # Two-step, to stop severity inflation: rate honestly FIRST, THEN drop below-threshold.
     threshold = ""
     if str(min_severity).lower() in ("medium", "high", "critical"):
         threshold = (
@@ -206,11 +203,7 @@ def build_system_prompt(
         f'{exact}{be_specific}{threshold}The "file" must appear in the diff. If you find nothing, return [].\n'
     )
 
-
-# Default prompt with every field requested. call_llm falls back to this; review() builds a
-# config-driven one per call so a user's reporting.fields toggles shape the model's output.
 SYSTEM_PROMPT = build_system_prompt()
-
 
 def ai_api_key() -> Optional[str]:
     """Read the key from the environment, loading a local .env first if present.
@@ -606,9 +599,6 @@ def review(
     closed: an empty diff or a clean pass is `([], True)` (nothing to warn about), but a
     dead/timed-out call, a missing CLI, or an unparseable response is `(..., False)` — the
     decision engine should then warn rather than treat "no findings" as all-clear.
-
-    Transport is chosen by the provider's `kind`: `cli` shells out to a local coding-agent
-    CLI (no API key), anything else speaks HTTP to an OpenAI-compatible endpoint.
     """
     if not diff or not diff.strip():
         return [], True   # nothing to review is not a failure
