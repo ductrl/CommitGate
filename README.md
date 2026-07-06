@@ -159,13 +159,13 @@ To switch, or add the other one later, run `commitgate install-hook` and choose.
 
 ### What each outcome means
 
-| Outcome | When | Result |
-|---------|------|--------|
-| `allow` | no findings | proceeds — exit `0` |
-| `warn` | findings **below** the block severity | proceeds, findings printed — exit `0` |
-| `block` | findings **at or above** the block severity (default: `high`) | stopped — exit `1` |
+| Outcome | When |
+|---------|------|
+| `allow` | no findings |
+| `warn` | findings **below** the block severity |
+| `block` | findings **at or above** the block severity (default: `high`) |
 
-Change the bar with `policy.block_severity` in `commitgate.yaml` (`low` / `medium` / `high` / `critical`).
+Change the bar with `policy.block_severity` in `commitgate.yaml` (`low` / `medium` / `high` / `critical`). See [Configuration](#configuration) for that and every other knob.
 
 ### Scan manually
 
@@ -200,11 +200,69 @@ SKIP=commitgate git commit -m "your message"
 
 ---
 
+## Configuration
+
+`commitgate init` writes a `commitgate.yaml` in your repo root. Every option has a safe default — edit only what you need. To restore the file to defaults at any time:
+
+```bash
+commitgate reset-config
+```
+
+The full file, annotated:
+
+```yaml
+# Enable or disable CommitGate for this repository.
+enabled: true
+
+ai:
+  # Enable the AI Reviewer (Gitleaks still runs when false).
+  enabled: true
+
+  # AI provider — see "Set up the AI Reviewer" above.
+  #   API key:  openai, deepseek, gemini, groq
+  #   AI agent: claude-cli, codex-cli
+  provider: deepseek
+
+  # Max seconds for AI review; on timeout the deterministic gate continues.
+  timeout: 20
+
+policy:
+  # Findings at or above this severity block the commit/push.
+  # Options: low, medium, high, critical
+  block_severity: high
+
+reporting:
+  # Minimum severity shown in output. Findings below it are hidden.
+  # Must be <= block_severity, so a blocking finding is never hidden.
+  # Options: low, medium, high, critical
+  min_severity: low
+
+  # Show or hide individual fields on each finding in the report.
+  fields:
+    source: true
+    category: true
+    description: true
+    suggestions: true
+```
+
+| Option | Default | What it does |
+|--------|---------|--------------|
+| `enabled` | `true` | Master switch — `false` turns CommitGate off for this repo (the hook exits `0` without scanning). |
+| `ai.enabled` | `true` | `false` runs Gitleaks only — no diff leaves your machine. |
+| `ai.provider` | `deepseek` | Which AI reviewer to use — see [Set up the AI Reviewer](#4-set-up-the-ai-reviewer). |
+| `ai.timeout` | `20` | Seconds allowed for AI review; on timeout the deterministic gate still runs. |
+| `policy.block_severity` | `high` | Findings at or above this severity **block**; below it **warn**. |
+| `reporting.min_severity` | `low` | Hides findings below this severity from the report. Capped at `block_severity`. |
+
+---
+
 ## Data Privacy
 
 When the AI Reviewer is enabled, CommitGate sends your **staged code diffs to the AI provider you configure** in `commitgate.yaml`. This applies to the AI Agents too (Claude Code → Anthropic, Codex → OpenAI), as your diff is still sent to their provider, so they are *not* air-gapped options.
 
-**Do not** use the AI Reviewer on confidential or proprietary code without your organization's authorization. Set `ai.enabled: false` to run Gitleaks only. Fully local LLM support (Ollama) is on the roadmap.
+**Do not** use the AI Reviewer on confidential or proprietary code without your organization's authorization. Set `ai.enabled: false` to run Gitleaks only. 
+
+**Fully local LLM support is on the roadmap.**
 
 ---
 
