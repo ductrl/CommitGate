@@ -30,8 +30,6 @@ DEFAULT_CONFIG = {
 }
 
 DEFAULT_CONFIG_YAML = """\
-# CommitGate configuration
-
 # Enable or disable CommitGate for this repository.
 enabled: true
 
@@ -40,7 +38,7 @@ ai:
   enabled: true
 
   # AI provider to use.
-  # Option 1: (API Key, AI_KEY in .env): openai, deepseek, gemini, groq (Tip: groq offers a free API key - get one at https://console.groq.com)
+  # Option 1: (API Key, AI_KEY in .env): openai, deepseek, gemini, groq (Tip: groq offers a free API key - at https://console.groq.com)
   # Option 2: Claude Code or Codex (no API key): claude-cli, codex-cli
   provider: deepseek
 
@@ -48,12 +46,13 @@ ai:
   timeout: 20
 
 policy:
-  # Minimum severity that blocks a commit.
+  # Findings at or above this severity block the commit/push.
   # Options: low, medium, high, critical
   block_severity: high
 
-reporting:    
+reporting:
   # Minimum severity shown in CommitGate output.
+  # Must be <= block_severity, so a blocking finding is never hidden
   # Options: low, medium, high, critical
   # Example: medium shows medium, high, and critical findings, but hides low findings.
   min_severity: low
