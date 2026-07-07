@@ -27,13 +27,14 @@ CommitGate runs two scanners over your changes and merges their findings:
 
 | Scanner | Catches |
 |---------|---------|
-| [![Gitleaks][gitleaks-badge]][gitleaks-link] | Known secret shapes — API keys, tokens, passwords that match standard patterns |
-| **AI Reviewer** | What regex missed — code understanding, private knowledge & data |
+| [![Gitleaks][gitleaks-badge]][gitleaks-link] | Known secret shapes: API keys, tokens, passwords |
+| **AI Reviewer** | What regex missed: code understanding, private knowledge |
 
-1. You run `git commit` (or `git push`). The installed Git hook hands your changes to CommitGate.
-2. Two scanners run over the diff — **Gitleaks** (known secret patterns) and the **AI Reviewer** (everything else).
-3. The **decision engine** merges the findings and rules **allow**, **warn**, or **block**.
-4. You get a report in your terminal. On **block**, the commit or push is stopped; otherwise it proceeds.
+- You run `git commit` (or `git push`). The installed Git hook hands your changes to CommitGate.
+
+- CommitGate decides an outcome **allow**, **warn**, or **block**.
+
+- You get a report in your terminal. On **block**, the commit or push is stopped; otherwise it proceeds.
 
 See [`docs/architecture.md`](docs/architecture.md) for the module-by-module design.
 
@@ -46,7 +47,7 @@ These are the available providers that we support for the AI reviewer. You can c
 | Type | Providers |
 |------|-----------|
 | **OpenAI-compatible API** (needs an API key) | [![OpenAI][openai-badge]][openai-link] [![Gemini][gemini-badge]][gemini-link] [![DeepSeek][deepseek-badge]][deepseek-link] [![Kimi][kimi-badge]][kimi-link] [![Groq][groq-badge]][groq-link] |
-| **AI Agents** (no API key — uses your local login) | [![Claude Code][claude-badge]][claude-link] [![Codex][codex-badge]][codex-link] |
+| **AI Agents** (no API key, uses your local login) | [![Claude Code][claude-badge]][claude-link] [![Codex][codex-badge]][codex-link] |
 
 ---
 
