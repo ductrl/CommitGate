@@ -214,6 +214,25 @@ def test_review_targets_v4_flash_with_thinking_disabled():
     assert captured["json"]["stream"] is True
 
 
+def test_review_targets_kimi_with_current_endpoint_and_token_key():
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, **kwargs):
+        captured["url"] = url
+        captured["json"] = json
+        return FakeResponse('[{"file": "app/db.py", "severity": "low", "rule": "r", "description": "m"}]')
+
+    with patch.object(ai_reviewer.requests, "post", side_effect=fake_post):
+        findings, ok = review("some diff", STAGED, api_key="k", provider="kimi")
+
+    assert ok is True
+    assert captured["url"] == "https://api.moonshot.ai/v1/chat/completions"
+    assert captured["json"]["model"] == "kimi-k2.7-code-highspeed"
+    assert captured["json"]["temperature"] == 1
+    assert "max_tokens" not in captured["json"]
+    assert captured["json"]["max_completion_tokens"] == ai_reviewer.DEFAULT_MAX_TOKENS
+    assert findings[0]["source"] == "AI Review (Kimi)"
+
 def test_review_self_wires_provider_and_key_when_omitted():
     # The pre-push case: caller hands over a diff but no api_key/provider. review() must
     # resolve the provider from config and pull the key from env (no 401). Config is

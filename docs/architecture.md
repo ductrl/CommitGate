@@ -6,7 +6,7 @@
 - **CLI:** Typer
 - **Terminal output:** Rich
 - **Config:** PyYAML (`commitgate.yaml`)
-- **LLM (HTTP):** requests (OpenAI-compatible — Groq, DeepSeek, OpenAI, Gemini)
+- **LLM (HTTP):** requests (OpenAI-compatible — OpenAI, Gemini, DeepSeek, Kimi, Groq)
 - **LLM (CLI):** `subprocess` to a local coding-agent CLI (Claude Code) — no API key
 - **Secret scanning:** Gitleaks — external binary invoked via `subprocess`
 
@@ -63,10 +63,11 @@ Supported providers and their defaults:
 
 | Provider | Transport | Model / command | API key |
 |----------|-----------|-----------------|---------|
-| `groq` | HTTP | `openai/gpt-oss-120b` | `AI_KEY` |
-| `deepseek` | HTTP | `deepseek-v4-flash` | `AI_KEY` |
 | `openai` | HTTP | `gpt-5.4-mini` | `AI_KEY` |
 | `gemini` | HTTP | `gemini-2.5-flash` | `AI_KEY` |
+| `deepseek` | HTTP | `deepseek-v4-flash` | `AI_KEY` |
+| `kimi` | HTTP | `kimi-k2.7-code-highspeed` | `AI_KEY` |
+| `groq` | HTTP | `openai/gpt-oss-120b` | `AI_KEY` |
 | `claude-cli` | CLI | `claude` (Claude Code, model `haiku`) | none — uses your Claude login |
 | `codex-cli` | CLI | `codex` (`codex exec --json`) | none — uses your `codex login` |
 

@@ -27,13 +27,14 @@ CommitGate runs two scanners over your changes and merges their findings:
 
 | Scanner | Catches |
 |---------|---------|
-| [![Gitleaks][gitleaks-badge]][gitleaks-link] | Known secret shapes — API keys, tokens, passwords that match standard patterns |
-| **AI Reviewer** | What regex missed — code understanding, private knowledge & data |
+| [![Gitleaks][gitleaks-badge]][gitleaks-link] | Known secret shapes: API keys, tokens, passwords |
+| **AI Reviewer** | What regex missed: code understanding, private knowledge |
 
-1. You run `git commit` (or `git push`). The installed Git hook hands your changes to CommitGate.
-2. Two scanners run over the diff — **Gitleaks** (known secret patterns) and the **AI Reviewer** (everything else).
-3. The **decision engine** merges the findings and rules **allow**, **warn**, or **block**.
-4. You get a report in your terminal. On **block**, the commit or push is stopped; otherwise it proceeds.
+- You run `git commit` (or `git push`). The installed Git hook hands your changes to CommitGate.
+
+- CommitGate decides an outcome **allow**, **warn**, or **block**.
+
+- You get a report in your terminal. On **block**, the commit or push is stopped; otherwise it proceeds.
 
 See [`docs/architecture.md`](docs/architecture.md) for the module-by-module design.
 
@@ -45,8 +46,8 @@ These are the available providers that we support for the AI reviewer. You can c
 
 | Type | Providers |
 |------|-----------|
-| **OpenAI-compatible API** (needs an API key) | [![OpenAI][openai-badge]][openai-link] [![Gemini][gemini-badge]][gemini-link] [![DeepSeek][deepseek-badge]][deepseek-link] [![Groq][groq-badge]][groq-link] |
-| **AI Agents** (no API key — uses your local login) | [![Claude Code][claude-badge]][claude-link] [![Codex][codex-badge]][codex-link] |
+| **OpenAI-compatible API** (needs an API key) | [![OpenAI][openai-badge]][openai-link] [![Gemini][gemini-badge]][gemini-link] [![DeepSeek][deepseek-badge]][deepseek-link] [![Kimi][kimi-badge]][kimi-link] [![Groq][groq-badge]][groq-link] |
+| **AI Agents** (no API key, uses your local login) | [![Claude Code][claude-badge]][claude-link] [![Codex][codex-badge]][codex-link] |
 
 ---
 
@@ -105,11 +106,11 @@ This creates a `commitgate.yaml` config file and installs a Git hook. It asks wh
 
 Open `commitgate.yaml` and set `provider` to match one of the paths below.
 
-**Option A: API key** (OpenAI · Gemini · DeepSeek · Groq)
+**Option A: API key** (OpenAI · Gemini · DeepSeek · Kimi · Groq)
 
 ```yaml
 ai:
-  provider: groq        # or openai / gemini / deepseek
+  provider: groq        # or openai / gemini / deepseek / kimi
 ```
 
 Create a `.env` file in your project root and add your key
@@ -224,7 +225,7 @@ ai:
   enabled: true
 
   # AI provider to use.
-  # Option 1: (AI_KEY in .env): openai, deepseek, gemini, groq (Tip: groq offers a free API key - at https://console.groq.com)
+  # Option 1: (AI_KEY in .env): openai, gemini, deepseek, kimi, groq (Tip: groq offers a free API key - at https://console.groq.com)
   # Option 2: Claude Code or Codex (no API key): claude-cli, codex-cli
   provider: deepseek
 
@@ -351,12 +352,14 @@ CommitGate is free to use, modify, and distribute under the terms of the MIT Lic
 [openai-badge]: assets/badges/openai.svg
 [gemini-badge]: https://img.shields.io/badge/Gemini-8E75B2?logo=googlegemini&logoColor=white
 [deepseek-badge]: https://img.shields.io/badge/DeepSeek-4D6BFE?logo=deepseek&logoColor=white
+[kimi-badge]: https://img.shields.io/badge/Kimi-111827?logo=moonrepo&logoColor=white
 [groq-badge]: assets/badges/groq.svg
 [claude-badge]: https://img.shields.io/badge/Claude_Code-C15F3C?logo=claude&logoColor=white
 [codex-badge]: assets/badges/codex.svg
 [openai-link]: https://platform.openai.com
 [gemini-link]: https://aistudio.google.com/
 [deepseek-link]: https://platform.deepseek.com
+[kimi-link]: https://platform.kimi.ai/console/account
 [groq-link]: https://console.groq.com
 [claude-link]: https://www.anthropic.com/claude-code
 [codex-link]: https://openai.com/codex/

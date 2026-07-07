@@ -58,17 +58,24 @@ PROVIDER_CONFIG = {
         "extra_body": None,
         "max_tokens_key": "max_completion_tokens",  # GPT-5.x dropped max_tokens
     },
+    "gemini": {
+        "label": "Gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "model": "gemini-2.5-flash",
+        "extra_body": None,
+    },
     "deepseek": {
         "label": "DeepSeek",
         "base_url": "https://api.deepseek.com",
         "model": "deepseek-v4-flash",
         "extra_body": {"thinking": {"type": "disabled"}},  # V4 defaults thinking ON — too slow for a hook
     },
-    "gemini": {
-        "label": "Gemini",
-        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "model": "gemini-2.5-flash",
-        "extra_body": None,
+    "kimi": {
+        "label": "Kimi",
+        "base_url": "https://api.moonshot.ai/v1",
+        "model": "kimi-k2.7-code-highspeed",
+        "extra_body": {"temperature": 1},
+        "max_tokens_key": "max_completion_tokens",
     },
     "groq": {
         "label": "Groq",
