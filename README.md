@@ -105,22 +105,22 @@ This creates a `commitgate.yaml` config file and installs a Git hook. It asks wh
 
 Open `commitgate.yaml` and set `provider` to match one of the paths below.
 
-**Option A — API key** (OpenAI · Gemini · DeepSeek · Groq)
+**Option A: API key** (OpenAI · Gemini · DeepSeek · Groq)
 
 ```yaml
 ai:
   provider: groq        # or openai / gemini / deepseek
 ```
 
-Create a `.env` file in your project root and add your key (Groq keys are **free** at [console.groq.com](https://console.groq.com)):
+Create a `.env` file in your project root and add your key
 
 ```env
 AI_KEY=your-api-key-here
 ```
 
-Keep `.env` out of Git — it holds your key.
+**Keep `.env` out of Git, it holds your key.**
 
-**Option B — AI Agent** (Claude Code or Codex, no API key)
+**Option B: AI Agent** (Claude Code or Codex, no API key)
 
 First confirm the agent is installed and logged in:
 
@@ -136,7 +136,7 @@ ai:
   provider: claude-cli   # or codex-cli
 ```
 
-**Option C — No AI** (Gitleaks only)
+**Option C: No AI** (Gitleaks only)
 
 ```yaml
 ai:
@@ -224,7 +224,7 @@ ai:
   enabled: true
 
   # AI provider to use.
-  # Option 1: (API Key, AI_KEY in .env): openai, deepseek, gemini, groq (Tip: groq offers a free API key - at https://console.groq.com)
+  # Option 1: (AI_KEY in .env): openai, deepseek, gemini, groq (Tip: groq offers a free API key - at https://console.groq.com)
   # Option 2: Claude Code or Codex (no API key): claude-cli, codex-cli
   provider: deepseek
 
@@ -241,15 +241,24 @@ reporting:
   # Must be <= block_severity, so a blocking finding is never hidden
   # Options: low, medium, high, critical
   # Example: medium shows medium, high, and critical findings, but hides low findings.
+  # Raising this also speeds up the AI review (fewer findings to generate).
   min_severity: low
 
   # Control which optional fields are displayed for each finding.
+  # Turning off description and suggestions also speeds up the AI review.
   fields:
     source: true
     category: true
     description: true
     suggestions: true
 ```
+
+### Tuning for speed
+
+- **`reporting.min_severity`** — raising it to `medium` or `high` returns fewer findings, noticeably faster.
+- **`reporting.fields.description` / `suggestions`** — AI will skip generating those fields entirely, biggest speedup.
+
+Both stay bounded by `policy.block_severity` (`min_severity` can't be raised above it), so a blocking finding is never hidden or skipped.
 
 ---
 
