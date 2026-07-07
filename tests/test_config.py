@@ -18,6 +18,11 @@ def test_generated_config_advertises_claude_cli(tmp_path, monkeypatch):
     assert "claude-cli" in text
 
 
+def test_kimi_is_valid_provider(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config.get_config_path().write_text("ai:\n  provider: kimi\n", encoding="utf-8")
+    assert load_config()["ai"]["provider"] == "kimi"
+
 def test_create_default_config_does_not_overwrite(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     config.get_config_path().write_text("ai:\n  provider: groq\n", encoding="utf-8")
