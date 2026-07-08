@@ -100,7 +100,7 @@ Run this **inside the repo you want to guard**:
 commitgate init
 ```
 
-This creates a `commitgate.yaml` config file and installs a Git hook. It asks whether you want a **pre-commit** or **pre-push** hook — see [How to use](#how-to-use).
+This creates a `commitgate.yaml` config file and installs a Git hook. It asks whether you want a **pre-commit** or **pre-push** hook (see [How to use](#how-to-use)).
 
 ### 4. Set up the AI Reviewer
 
@@ -150,7 +150,7 @@ It is recommended to commit `commitgate.yaml` so your whole team shares the same
 
 ## How to use
 
-After `commitgate init`, just `git commit` / `git push` as usual — CommitGate runs automatically.
+After `commitgate init`, just `git commit` / `git push` as usual and CommitGate will automatically scan your changes.
 
 ### pre-commit vs pre-push
 
@@ -158,8 +158,8 @@ You pick one when you run `commitgate init` (or `commitgate install-hook`):
 
 | Hook | Runs on | Scans |
 |------|---------|-------|
-| **pre-commit** | every `git commit` | your staged changes — fast, per-commit feedback |
-| **pre-push** | every `git push` | every commit in the push range — a final gate before code leaves your machine |
+| **pre-commit** | every `git commit` | your staged changes → fast, per-commit feedback |
+| **pre-push** | every `git push` | every commit in the push range → a final gate before code leaves your machine |
 
 To switch, or add the other one later, run `commitgate install-hook` and choose. Install both for defense in depth.
 
@@ -171,7 +171,7 @@ To switch, or add the other one later, run `commitgate install-hook` and choose.
 | `warn` | findings **below** the block severity |
 | `block` | findings **at or above** the block severity (default: `high`) |
 
-Change the bar with `policy.block_severity` in `commitgate.yaml` (`low` / `medium` / `high` / `critical`). See [Configuration](#configuration) for that and every other knob.
+Change the bar with `policy.block_severity` in `commitgate.yaml` (`low` / `medium` / `high` / `critical`). See [Configuration](#configuration) for that and other options.
 
 ### Scan manually
 
@@ -256,8 +256,9 @@ reporting:
 
 ### Tuning for speed
 
-- **`reporting.min_severity`** — raising it to `medium` or `high` returns fewer findings, noticeably faster.
-- **`reporting.fields.description` / `suggestions`** — AI will skip generating those fields entirely, biggest speedup.
+- CommitGate scan time is mostly determined by how much output it needs to generate. In general, the less information it needs to print, the faster it runs.
+- **`reporting.min_severity`**: Raising to `medium` or `high` returns fewer findings and reduces scan time.
+- **`reporting.fields.description` / `suggestions`**: AI will skip generating those fields entirely and significantly improve scan speed.
 
 Both stay bounded by `policy.block_severity` (`min_severity` can't be raised above it), so a blocking finding is never hidden or skipped.
 
