@@ -243,7 +243,7 @@ reporting:
   # Options: low, medium, high, critical
   # Example: medium shows medium, high, and critical findings, but hides low findings.
   # Raising this also speeds up the AI review (fewer findings to generate).
-  min_severity: low
+  min_severity: medium
 
   # Control which optional fields are displayed for each finding.
   # Turning off description and suggestions also speeds up the AI review.
