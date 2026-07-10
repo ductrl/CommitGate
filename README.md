@@ -352,13 +352,13 @@ CommitGate is free to use, modify, and distribute under the terms of the MIT Lic
 
 <!-- provider badge + link definitions -->
 [openai-badge]: assets/badges/openai.svg
-[gemini-badge]: https://img.shields.io/badge/Gemini-8E75B2?logo=googlegemini&logoColor=white
+[gemini-badge]: assets/badges/gemini.svg
 [deepseek-badge]: https://img.shields.io/badge/DeepSeek-4D6BFE?logo=deepseek&logoColor=white
 [kimi-badge]: https://img.shields.io/badge/Kimi-111827?logo=moonrepo&logoColor=white
 [groq-badge]: assets/badges/groq.svg
 [claude-badge]: https://img.shields.io/badge/Claude_Code-C15F3C?logo=claude&logoColor=white
 [codex-badge]: assets/badges/codex.svg
-[antigravity-badge]: https://img.shields.io/badge/Antigravity-4285F4?logo=google&logoColor=white
+[antigravity-badge]: assets/badges/antigravity.svg
 [openai-link]: https://platform.openai.com
 [gemini-link]: https://aistudio.google.com/
 [deepseek-link]: https://platform.deepseek.com
