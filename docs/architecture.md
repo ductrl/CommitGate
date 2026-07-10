@@ -7,7 +7,7 @@
 - **Terminal output:** Rich
 - **Config:** PyYAML (`commitgate.yaml`)
 - **LLM (HTTP):** requests (OpenAI-compatible — OpenAI, Gemini, DeepSeek, Kimi, Groq)
-- **LLM (CLI):** `subprocess` to a local coding-agent CLI (Claude Code) — no API key
+- **LLM (CLI):** `subprocess` to a local coding-agent CLI (Claude Code, Codex, or Antigravity) — no API key
 - **Secret scanning:** Gitleaks — external binary invoked via `subprocess`
 
 ## Orchestration Flow
@@ -70,12 +70,13 @@ Supported providers and their defaults:
 | `groq` | HTTP | `openai/gpt-oss-120b` | `AI_KEY` |
 | `claude-cli` | CLI | `claude` (Claude Code, model `haiku`) | none — uses your Claude login |
 | `codex-cli` | CLI | `codex` (`codex exec --json`) | none — uses your `codex login` |
+| `agy-cli` | CLI | `agy` (Gemini 3.5 Flash Low; sandboxed plan/print mode) | none — uses your Antigravity login |
 
 - `review(diff, staged_files)` — main orchestrator (called by `scan` for both hook types); resolves the provider from `PROVIDER_CONFIG`, then either calls the HTTP endpoint (key from env) or the CLI, and returns `(findings, ok)`
 - `review_staged()` — convenience wrapper that pulls the staged diff/files from git, then delegates to `review()`
 - `build_prompt(diff)` — wraps the diff into the security-review prompt
 - `call_llm(...)` — OpenAI-compatible `/chat/completions` call with SSE streaming (HTTP providers)
-- `call_cli(...)` — runs the CLI via subprocess (prompt piped on stdin), then unwraps its output per `output_mode`: Claude's single JSON envelope, or Codex's JSONL event stream (last `agent_message`). The timeout is floored so a per-commit review isn't spuriously skipped on a cold start
+- `call_cli(...)` — runs the CLI via subprocess, delivering the prompt on stdin (Claude/Codex) or as the `--print` value (Antigravity), then unwraps Claude's JSON envelope, Codex's JSONL stream, or Antigravity's plain text. The timeout is floored for cold starts; oversized Antigravity prompts fail safely on Windows before reaching the OS command-line limit.
 - `parse_findings(raw, staged_files)` — validates model output into finding dicts; returns `(findings, parse_ok)`
 
 `ok=False` on any LLM error, timeout, or a missing/failed CLI — the caller warns and continues on the deterministic gate only. Never raises.

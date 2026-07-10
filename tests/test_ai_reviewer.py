@@ -380,12 +380,53 @@ def test_review_codex_missing_binary_fails_safe(capsys):
     assert "codex" in capsys.readouterr().err
 
 
+# --- Antigravity CLI (plain output, prompt in argv) ---------------------------
+
+def test_review_antigravity_parses_plain_output_and_uses_safe_flags():
+    raw = json.dumps([{
+        "file": "app/db.py", "severity": "high", "rule": "r", "description": "m"
+    }])
+    with patch.object(ai_reviewer.shutil, "which", return_value="C:/agy/agy.exe"), \
+         patch.object(ai_reviewer.subprocess, "run", return_value=FakeProc(stdout=raw)) as run:
+        findings, ok = review("some diff", STAGED, provider="agy-cli")
+
+    assert ok is True
+    assert findings[0]["source"] == "AI Review (Antigravity)"
+    argv = run.call_args.args[0]
+    assert argv[argv.index("--model") + 1] == "Gemini 3.5 Flash (Low)"
+    assert "--sandbox" in argv
+    assert argv[argv.index("--mode") + 1] == "plan"
+    assert argv[-2] == "--print"
+    assert "some diff" in argv[-1]
+    assert run.call_args.kwargs["input"] is None
+
+
+def test_review_antigravity_missing_binary_fails_safe(capsys):
+    with patch.object(ai_reviewer.shutil, "which", return_value=None):
+        findings, ok = review("some diff", STAGED, provider="agy-cli")
+    assert findings == [] and ok is False
+    assert "agy" in capsys.readouterr().err
+
+
+def test_antigravity_oversized_windows_prompt_fails_before_launch():
+    with patch.object(ai_reviewer.shutil, "which", return_value="C:/agy/agy.exe"), \
+         patch.object(ai_reviewer.os, "name", "nt"), \
+         patch.object(ai_reviewer.subprocess, "run") as run:
+        with pytest.raises(RuntimeError, match="too large for the Windows command line"):
+            ai_reviewer.call_cli(
+                "agy", ["--print"], "x" * ai_reviewer.WINDOWS_ARGV_SAFE_LIMIT,
+                output_mode="plain", prompt_mode="argv",
+            )
+    run.assert_not_called()
+
+
 def test_review_cli_floors_short_timeout():
     # scan passes the HTTP-tuned 20s; the CLI path must floor it (agent boot alone can
     # exceed 20s) so the review isn't spuriously skipped.
     captured = {}
 
-    def fake_call_cli(command, args, prompt, timeout, result_key="result", env=None, output_mode="envelope"):
+    def fake_call_cli(command, args, prompt, timeout, result_key="result", env=None,
+                      output_mode="envelope", prompt_mode="stdin"):
         captured["timeout"] = timeout
         return "[]"
 
@@ -500,7 +541,8 @@ def test_review_cli_prompt_shaped_by_report_fields():
     # The CLI transport inlines the system prompt on stdin -> the shaping must reach it too.
     captured = {}
 
-    def fake_call_cli(command, args, prompt, timeout, result_key="result", env=None, output_mode="envelope"):
+    def fake_call_cli(command, args, prompt, timeout, result_key="result", env=None,
+                      output_mode="envelope", prompt_mode="stdin"):
         captured["prompt"] = prompt
         return "[]"
 

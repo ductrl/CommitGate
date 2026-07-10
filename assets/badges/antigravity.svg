@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="20" role="img" aria-label="Antigravity">
+  <title>Antigravity</title>
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1">
+      <stop stop-color="#263f70"/>
+      <stop offset="1" stop-color="#15294f"/>
+    </linearGradient>
+    <linearGradient id="ag" x1="12" y1="0" x2="4" y2="15" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fc413d"/>
+      <stop offset=".28" stop-color="#fbbc04"/>
+      <stop offset=".55" stop-color="#00b95c"/>
+      <stop offset="1" stop-color="#3186ff"/>
+    </linearGradient>
+    <clipPath id="r"><rect width="96" height="20" rx="3"/></clipPath>
+  </defs>
+  <g clip-path="url(#r)">
+    <rect width="96" height="20" fill="url(#bg)"/>
+  </g>
+  <g transform="translate(4 2.5)">
+    <path fill="url(#ag)" d="M14.078 13.984c.867.651 2.168.217.975-.976C11.476 9.539 12.235 0 7.79 0S4.105 9.539.527 13.008c-1.301 1.301.109 1.627.976.976 3.36-2.276 3.144-6.287 6.287-6.287s2.927 4.011 6.288 6.287Z"/>
+  </g>
+  <text x="25" y="14" fill="#fff" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">Antigravity</text>
+</svg>
