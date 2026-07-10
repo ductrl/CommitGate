@@ -44,6 +44,7 @@ DEFAULT_TIMEOUT = 20        # seconds; suits the fast HTTP providers. override w
 DEFAULT_MAX_TOKENS = 2048
 CONNECT_TIMEOUT = 5         # separate connect timeout — fail fast if network is down
 CLI_MIN_TIMEOUT = 30        # CLI agents cold-start a process first
+WINDOWS_ARGV_SAFE_LIMIT = 30_000  # CreateProcess has a 32,767-character command-line limit
 
 DEFAULT_PROVIDER = "deepseek"
 
@@ -120,6 +121,18 @@ PROVIDER_CONFIG = {
             "-",
         ],
         "output": "jsonl",      # Codex event stream; answer in the last agent_message
+    },
+    "agy-cli": {
+        "kind": "cli",
+        "label": "Antigravity",
+        "command": "agy",
+        # Non-interactive, restricted, read-only review. The prompt follows --print.
+        "args": [
+            "--model", "Gemini 3.5 Flash (Low)",
+            "--sandbox", "--mode", "plan", "--print",
+        ],
+        "prompt_mode": "argv",
+        "output": "plain",
     },
 }
 
@@ -372,8 +385,9 @@ def call_cli(
     result_key: str = "result",
     env: Optional[dict] = None,
     output_mode: str = "envelope",
+    prompt_mode: str = "stdin",
 ) -> str:
-    """Run a local coding-agent CLI (e.g. Claude Code, Codex) as the LLM transport.
+    """Run a local coding-agent CLI (e.g. Claude Code, Codex, Antigravity) as transport.
 
     Unlike `call_llm`, this makes no HTTP call of its own: it shells out to an already
     installed and logged-in CLI, which reaches its provider under the user's own
@@ -385,10 +399,24 @@ def call_cli(
             f"'{command}' not found on PATH -- install it, or set a different ai.provider "
             f"in commitgate.yaml"
         )
+    argv = _cli_argv(exe, args)
+    process_input = prompt
+    if prompt_mode == "argv":
+        argv.append(prompt)
+        process_input = None
+        # CreateProcess limits the entire command line to 32,767 characters.
+        if os.name == "nt" and len(subprocess.list2cmdline(argv)) > WINDOWS_ARGV_SAFE_LIMIT:
+            raise RuntimeError(
+                f"'{command}' prompt is too large for the Windows command line; "
+                "reduce the staged diff or use another AI provider"
+            )
+    elif prompt_mode != "stdin":
+        raise ValueError(f"Unsupported CLI prompt mode: {prompt_mode}")
+
     try:
         proc = subprocess.run(
-            _cli_argv(exe, args),
-            input=prompt,
+            argv,
+            input=process_input,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -402,6 +430,8 @@ def call_cli(
         raise RuntimeError(f"'{command}' exited {proc.returncode}: {detail[:200]}")
     if output_mode == "jsonl":
         return _unwrap_codex_jsonl(proc.stdout)
+    if output_mode == "plain":
+        return (proc.stdout or "").strip()
     return _unwrap_cli_output(proc.stdout, result_key)
 
 
@@ -639,6 +669,7 @@ def review(
                 pconf.get("result_key", "result"),
                 env=pconf.get("env"),
                 output_mode=pconf.get("output", "envelope"),
+                prompt_mode=pconf.get("prompt_mode", "stdin"),
             )
         except Exception as exc:  # noqa: BLE001 - fail-safe must catch everything
             _warn_ai_skipped(exc)

@@ -42,12 +42,12 @@ See [`docs/architecture.md`](docs/architecture.md) for the module-by-module desi
 
 ## Providers
 
-These are the available providers that we support for the AI reviewer. You can choose between use an OpenAI-compatible API key (recommended) or use your own AI agent (Claude or Codex).
+These are the available providers that we support for the AI reviewer. You can choose between use an OpenAI-compatible API key (faster, recommended) or use your own AI agents.
 
 | Type | Providers |
 |------|-----------|
 | **OpenAI-compatible API** (needs an API key) | [![OpenAI][openai-badge]][openai-link] [![Gemini][gemini-badge]][gemini-link] [![DeepSeek][deepseek-badge]][deepseek-link] [![Kimi][kimi-badge]][kimi-link] [![Groq][groq-badge]][groq-link] |
-| **AI Agents** (no API key, uses your local login) | [![Claude Code][claude-badge]][claude-link] [![Codex][codex-badge]][codex-link] |
+| **AI Agents** (no API key, uses your local login) | [![Claude Code][claude-badge]][claude-link] [![Codex][codex-badge]][codex-link] [![Antigravity][antigravity-badge]][antigravity-link] |
 
 ---
 
@@ -121,20 +121,21 @@ AI_KEY=your-api-key-here
 
 **Keep `.env` out of Git, it holds your key.**
 
-**Option B: AI Agent** (Claude Code or Codex, no API key)
+**Option B: AI Agent** (Claude Code, Codex, or Antigravity; no API key)
 
 First confirm the agent is installed and logged in:
 
 ```bash
 claude --version    # Claude Code
 codex --version     # Codex
+agy --version       # Antigravity
 ```
 
 Then set the provider:
 
 ```yaml
 ai:
-  provider: claude-cli   # or codex-cli
+  provider: claude-cli   # or codex-cli / agy-cli
 ```
 
 **Option C: No AI** (Gitleaks only)
@@ -226,7 +227,7 @@ ai:
 
   # AI provider to use.
   # Option 1: (AI_KEY in .env): openai, gemini, deepseek, kimi, groq (Tip: groq offers a free API key - at https://console.groq.com)
-  # Option 2: Claude Code or Codex (no API key): claude-cli, codex-cli
+  # Option 2: local agent login (no API key): claude-cli, codex-cli, agy-cli
   provider: deepseek
 
   # Maximum time (seconds) allowed for AI review.
@@ -266,7 +267,7 @@ Both stay bounded by `policy.block_severity` (`min_severity` can't be raised abo
 
 ## Data Privacy
 
-When the AI Reviewer is enabled, CommitGate sends your **staged code diffs to the AI provider you configure** in `commitgate.yaml`. This applies to the AI Agents too (Claude Code → Anthropic, Codex → OpenAI), as your diff is still sent to their provider, so they are *not* air-gapped options.
+When the AI Reviewer is enabled, CommitGate sends your **staged code diffs to the AI provider you configure** in `commitgate.yaml`. This applies to AI Agents too (Claude Code → Anthropic, Codex → OpenAI, Antigravity → Google), as your diff is still sent to their provider, so they are *not* air-gapped options.
 
 **Do not** use the AI Reviewer on confidential or proprietary code without your organization's authorization. Set `ai.enabled: false` to run Gitleaks only. 
 
@@ -357,6 +358,7 @@ CommitGate is free to use, modify, and distribute under the terms of the MIT Lic
 [groq-badge]: assets/badges/groq.svg
 [claude-badge]: https://img.shields.io/badge/Claude_Code-C15F3C?logo=claude&logoColor=white
 [codex-badge]: assets/badges/codex.svg
+[antigravity-badge]: https://img.shields.io/badge/Antigravity-4285F4?logo=google&logoColor=white
 [openai-link]: https://platform.openai.com
 [gemini-link]: https://aistudio.google.com/
 [deepseek-link]: https://platform.deepseek.com
@@ -364,5 +366,6 @@ CommitGate is free to use, modify, and distribute under the terms of the MIT Lic
 [groq-link]: https://console.groq.com
 [claude-link]: https://www.anthropic.com/claude-code
 [codex-link]: https://openai.com/codex/
+[antigravity-link]: https://antigravity.google/product/antigravity-cli
 [gitleaks-badge]: assets/badges/gitleaks.svg
 [gitleaks-link]: https://gitleaks.org/

@@ -39,7 +39,7 @@ ai:
 
   # AI provider to use.
   # Option 1: (AI_KEY in .env): openai, gemini, deepseek, kimi, groq (Tip: groq offers a free API key - at https://console.groq.com)
-  # Option 2: Claude Code or Codex (no API key): claude-cli, codex-cli
+  # Option 2: local agent login (no API key): claude-cli, codex-cli, agy-cli
   provider: deepseek
 
   # Maximum time (seconds) allowed for AI review.
@@ -68,7 +68,10 @@ reporting:
 """
 
 # VALID INPUTS FOR VALIDATION
-VALID_PROVIDERS = ["openai", "gemini", "deepseek", "kimi", "groq", "claude-cli", "codex-cli"]
+VALID_PROVIDERS = [
+    "openai", "gemini", "deepseek", "kimi", "groq",
+    "claude-cli", "codex-cli", "agy-cli",
+]
 VALID_SEVERITIES = ["low", "medium", "high", "critical"]
 VALID_REPORTING_FIELDS = [
     "source",
