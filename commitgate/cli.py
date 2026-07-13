@@ -5,7 +5,7 @@ import os
 from commitgate.git_utils import install_git_hook, get_staged_diff, get_staged_files, get_pre_push_changes, PrePushHookError
 from commitgate.gitleaks_runner import run_gitleaks_scan
 from commitgate.report_generator import format_finding, severity_color, remove_dup, filter_by_min_severity
-from commitgate.ai_reviewer import review
+from commitgate.ai_review import review
 from commitgate.config import create_default_config, load_config
 from commitgate.decision_engine import decide
 from commitgate.splunk_logger import log_decision
