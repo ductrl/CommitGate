@@ -267,7 +267,7 @@ Both stay bounded by `policy.block_severity` (`min_severity` can't be raised abo
 
 ## Data Privacy
 
-When the AI Reviewer is enabled, CommitGate sends your **staged code diffs to the AI provider you configure** in `commitgate.yaml`. This applies to AI Agents too (Claude Code → Anthropic, Codex → OpenAI, Antigravity → Google), as your diff is still sent to their provider, so they are *not* air-gapped options.
+When the AI Reviewer is enabled, CommitGate sends the **selected change diff to the AI provider you configure** in `commitgate.yaml` (staged diff for pre-commit, push-range diff for pre-push). This applies to AI Agents too (Claude Code → Anthropic, Codex → OpenAI, Antigravity → Google), as your diff is still sent to their provider, so they are *not* air-gapped options.
 
 **Do not** use the AI Reviewer on confidential or proprietary code without your organization's authorization. Set `ai.enabled: false` to run Gitleaks only. 
 
@@ -277,7 +277,7 @@ When the AI Reviewer is enabled, CommitGate sends your **staged code diffs to th
 
 ## Splunk Audit Logging (optional)
 
-CommitGate can send an audit event to Splunk after every scan, giving you a searchable history of every commit decision.
+CommitGate can send a sanitized audit event to Splunk when findings produce a `warn` or `block` decision.
 
 ### 1. Create a Splunk account
 
@@ -328,7 +328,7 @@ If the audit event reaches Splunk you'll see no yellow "Splunk audit log failed"
 sourcetype="commitgate:audit"
 ```
 
-Each `commitgate scan` appears as one event with `action`, `reason`, `findings_count`, and the full findings list.
+Each logged `warn` or `block` decision appears as one event with `action`, `reason`, `findings_count`, and the sanitized findings list.
 
 ### Splunk dashboard
 

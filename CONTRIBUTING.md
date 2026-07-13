@@ -82,7 +82,11 @@ commitgate/
 ├── cli.py    
 ├── git_utils.py   
 ├── gitleaks_runner.py   
-├── ai_reviewer.py   
+├── ai_review/
+│   ├── reviewer.py
+│   ├── prompt.py
+│   ├── transport.py
+│   └── findings.py
 ├── decision_engine.py   
 ├── report_generator.py   
 ├── splunk_logger.py   
