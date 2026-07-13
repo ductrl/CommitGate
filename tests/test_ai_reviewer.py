@@ -11,8 +11,9 @@ from unittest.mock import patch
 import pytest
 import requests
 
-from commitgate import ai_reviewer
-from commitgate.ai_reviewer import build_prompt, call_llm, parse_findings, review
+from commitgate.ai_review import build_prompt, call_llm, parse_findings, review
+from commitgate.ai_review import reviewer as ai_reviewer
+from commitgate.report_generator import remove_dup
 
 STAGED = ["app/config.py", "app/db.py"]
 
@@ -170,6 +171,107 @@ def test_parse_accepts_object_with_findings_key():
     findings, ok = parse_findings(raw, STAGED)
     assert ok is True
     assert len(findings) == 1 and findings[0]["severity"] == "critical"
+
+
+# --- deterministic secret location normalization -----------------------------
+
+SECRET_DIFF = """diff --git a/app/config.py b/app/config.py
+new file mode 100644
+--- /dev/null
++++ b/app/config.py
+@@ -0,0 +1,4 @@
++import os
++
++# release credential
++TOKEN = "unit-test-secret-12345"
+"""
+
+
+def _secret_raw(*, line=5, secret="unit-test-secret-12345"):
+    item = {
+        "file": "app/config.py",
+        "severity": "critical",
+        "rule": "hardcoded-token",
+        "start_line": line,
+        "end_line": line,
+        "description": "Credential in source",
+    }
+    if secret is not None:
+        item["secret"] = secret
+    return json.dumps([item])
+
+
+def test_parse_corrects_secret_line_then_exact_dedup_collapses():
+    ai, ok = parse_findings(_secret_raw(line=5), STAGED, diff=SECRET_DIFF)
+    assert ok is True
+    assert ai[0]["start_line"] == 4
+    assert ai[0]["end_line"] == 4
+
+    gitleaks = {
+        "source": "gitleaks", "rule": "generic-api-key", "severity": "critical",
+        "file": "app/config.py", "start_line": 4, "end_line": 4,
+    }
+    merged = remove_dup([gitleaks, *ai])
+    assert len(merged) == 1
+    assert merged[0]["source"] == "gitleaks"
+
+
+def test_parse_corrects_quoted_secret_evidence():
+    findings, _ = parse_findings(
+        _secret_raw(line=99, secret='"unit-test-secret-12345"'),
+        STAGED,
+        diff=SECRET_DIFF,
+    )
+    assert findings[0]["start_line"] == 4
+
+
+def test_parse_keeps_location_when_secret_match_is_ambiguous():
+    diff = SECRET_DIFF.replace(
+        '+TOKEN = "unit-test-secret-12345"',
+        '+TOKEN = "unit-test-secret-12345"\n+BACKUP = "unit-test-secret-12345"',
+    )
+    findings, _ = parse_findings(_secret_raw(line=77), STAGED, diff=diff)
+    assert findings[0]["start_line"] == 77
+
+
+@pytest.mark.parametrize("secret", [None, "REDACTED", "short"])
+def test_parse_keeps_location_without_usable_secret_evidence(secret):
+    findings, _ = parse_findings(_secret_raw(line=33, secret=secret), STAGED, diff=SECRET_DIFF)
+    assert findings[0]["start_line"] == 33
+
+
+def test_diff_parser_tracks_hunks_files_context_and_deletions():
+    diff = """diff --git a/app/config.py b/app/config.py
+--- a/app/config.py
++++ b/app/config.py
+@@ -8,3 +8,3 @@
+ context
+-old value
++new unit-test-secret-12345
+ context
+diff --git a/app/db.py b/app/db.py
+--- a/app/db.py
++++ b/app/db.py
+@@ -20,0 +20,1 @@
++DATABASE_URL = "db-test-secret-67890"
+"""
+    assert ai_reviewer._added_lines_by_file(diff) == {
+        "app/config.py": [(9, "new unit-test-secret-12345")],
+        "app/db.py": [(20, 'DATABASE_URL = "db-test-secret-67890"')],
+    }
+
+
+def test_parse_does_not_match_secret_only_in_removed_or_context_lines():
+    diff = """diff --git a/app/config.py b/app/config.py
+--- a/app/config.py
++++ b/app/config.py
+@@ -3,2 +3,2 @@
+-TOKEN = "unit-test-secret-12345"
++TOKEN = load_from_env()
+ context mentions unit-test-secret-12345
+"""
+    findings, _ = parse_findings(_secret_raw(line=41), STAGED, diff=diff)
+    assert findings[0]["start_line"] == 41
 
 
 # --- fail-safe ----------------------------------------------------------------
@@ -475,10 +577,30 @@ def test_call_llm_hits_chat_completions_with_bearer():
 
 # --- prompt shaping from reporting.fields (output-token / latency win) ---------
 
+def test_system_prompt_keeps_evidence_rules():
+    # Anti-inflation/anti-false-positive rules added deliberately in the structured
+    # rewrite - pin them so a future prompt edit doesn't silently drop them.
+    p = ai_reviewer.build_system_prompt()
+    assert "EVIDENCE RULES" in p
+    assert "named parser" in p
+    assert "external attacker repeatedly denying a shared service" in p
+    assert "Try to disprove candidates" in p
+    # Raw-sink presumption: without it, a bare eval/os.system on a parameter counts as
+    # "hypothetical" and the min_severity gate skips it entirely (missed 3 criticals live).
+    assert "assumed to receive untrusted input unless the diff shows the input is a constant" in p
+    # Gitleaks boundary must be explicit: the model can't know gitleaks' coverage, and
+    # "don't duplicate gitleaks" alone made it skip DB-URL passwords entirely (live miss).
+    # Keep the proven paragraph wording: moving the same boundary into EVIDENCE RULES
+    # made DeepSeek omit DB credentials in 5/5 live calls.
+    assert "scheme://user:password@host" in p
+    assert "even when standard-format secrets appear in the same diff" in p
+
+
 def test_build_system_prompt_requests_all_fields_by_default():
     p = ai_reviewer.build_system_prompt()
     assert '"category"' in p and '"description": str' in p and '"suggestion": str' in p
-    assert "Be specific in `description` and `suggestion`." in p
+    assert "`description` <= 25 words with observed evidence only" in p
+    assert "`suggestion` <= 15 words" in p
 
 
 def test_build_system_prompt_omits_disabled_output_fields():
@@ -492,13 +614,15 @@ def test_build_system_prompt_omits_disabled_output_fields():
     # ...but the load-bearing fields the gate needs are ALWAYS requested
     for keep in ('"rule": str', '"severity"', '"file": str', '"start_line"', '"end_line"', '"secret"'):
         assert keep in p
-    assert "Be specific" not in p   # no prose fields left to be specific about
+    # no prose fields left to constrain -> no word-cap sentence
+    assert "<= 25 words" not in p and "<= 15 words" not in p
 
 
 def test_build_system_prompt_one_prose_field():
     p = ai_reviewer.build_system_prompt(include_suggestion=False)
     assert '"description": str' in p and '"suggestion": str' not in p
-    assert "Be specific in `description`." in p   # only the enabled prose field is named
+    assert "`description` <= 25 words with observed evidence only" in p
+    assert "`suggestion` <= 15 words" not in p
 
 
 def test_review_prompt_shaped_by_report_fields():
@@ -559,16 +683,17 @@ def test_review_cli_prompt_shaped_by_report_fields():
 
 def test_build_system_prompt_no_threshold_at_low():
     # "low" == report everything -> no severity gate (default prompt stays unchanged).
-    assert "Severity gate" not in ai_reviewer.build_system_prompt(min_severity="low")
+    p = ai_reviewer.build_system_prompt(min_severity="low")
+    assert "Report all" not in p and "Skip low-severity" not in p
 
 
 def test_build_system_prompt_adds_min_severity_threshold():
-    # The gate must rate-first-then-drop and forbid inflation, not just say "report >= X"
-    # (which makes the model bump lows up to clear the bar).
+    # The gate names sub-threshold CATEGORIES to skip rather than asking the model to
+    # self-rate severity: "rate then drop" made deepseek-flash return [] even for blatant
+    # criticals, and a bare "report >= X" made it inflate lows to clear the bar.
     p = ai_reviewer.build_system_prompt(min_severity="high")
-    assert "Severity gate" in p
-    assert "below high" in p
-    assert "Never raise a finding's severity" in p
+    assert "Report all high and critical findings" in p
+    assert "Skip low- and medium-severity issues" in p
 
 
 def test_review_threads_min_severity_into_prompt():
@@ -583,5 +708,5 @@ def test_review_threads_min_severity_into_prompt():
     with patch.object(ai_reviewer.requests, "post", side_effect=fake_post):
         review("some diff", STAGED, api_key="k", provider="deepseek", min_severity="high")
 
-    assert "Severity gate" in captured["system"]
-    assert "below high" in captured["system"]
+    assert "Report all high and critical findings" in captured["system"]
+    assert "Skip low- and medium-severity issues" in captured["system"]
