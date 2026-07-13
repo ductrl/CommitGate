@@ -27,6 +27,8 @@ def _run_git(args: list[str]) -> str:
         ["git", *args],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=True
     )
 
@@ -39,7 +41,9 @@ def get_staged_files() -> list[str]:
     res = subprocess.run(
         ["git", "diff", "--cached", "--name-only"],
         capture_output=True,
-        text=True
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     if res.returncode != 0:
@@ -54,7 +58,9 @@ def get_staged_diff() -> str:
     res = subprocess.run(
         ["git", "diff", "--cached"],
         capture_output=True,
-        text=True
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     if res.returncode != 0:
@@ -149,7 +155,9 @@ def is_git_repo() -> bool:
     res = subprocess.run(
         ["git", "rev-parse", "--is-inside-work-tree"],
         capture_output=True,
-        text=True
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     return (res.returncode == 0 and res.stdout.strip() == "true")

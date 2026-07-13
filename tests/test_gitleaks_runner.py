@@ -2,6 +2,7 @@
 subprocess are never required — missing-file and missing-binary paths are mocked."""
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -53,3 +54,23 @@ def test_run_scan_skips_nonexistent_files(monkeypatch):
     # Binary present, but the path doesn't exist -> skipped, never shells out.
     monkeypatch.setattr(gitleaks_runner, "is_gitleaks_installed", lambda: True)
     assert run_gitleaks_scan(["does/not/exist.py"]) == []
+
+
+def test_run_scan_requests_utf8_decoding(tmp_path, monkeypatch):
+    target = tmp_path / "unicode.py"
+    target.write_text("label = '\u2764'\n", encoding="utf-8")
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured.update(kwargs)
+        report_path = command[command.index("--report-path") + 1]
+        with open(report_path, "w", encoding="utf-8") as report:
+            json.dump([], report)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(gitleaks_runner, "is_gitleaks_installed", lambda: True)
+    monkeypatch.setattr(gitleaks_runner.subprocess, "run", fake_run)
+
+    assert run_gitleaks_scan([str(target)]) == []
+    assert captured["encoding"] == "utf-8"
+    assert captured["errors"] == "replace"
