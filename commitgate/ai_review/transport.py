@@ -26,7 +26,7 @@ DEFAULT_PROVIDER = "deepseek"
 # no API key). Switch provider by editing `ai.provider` in commitgate.yaml -- no code change.
 PROVIDER_CONFIG = {
     "openai": {
-        "label": "OpenAI",         
+        "label": "OpenAI",
         "base_url": "https://api.openai.com/v1",
         "model": "gpt-5.4-mini",
         "extra_body": None,
@@ -158,7 +158,7 @@ def call_llm(
                 line = raw_line.decode("utf-8")
             else:
                 line = str(raw_line)
-                
+
             if not line.startswith("data: "):
                 continue
             data = line[6:]

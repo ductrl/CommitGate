@@ -123,13 +123,13 @@ def _resolve_min_severity() -> str:
         from commitgate.config import load_config
         sev = load_config().get("reporting", {}).get("min_severity", "low")
         return sev if sev in ("low", "medium", "high", "critical") else "low"
-    except Exception: 
+    except Exception:
         return "low"
 
 
 def _resolve_provider(provider: Optional[str] = None) -> dict:
     """Return the PROVIDER_CONFIG entry for `provider`; when None, read `ai.provider`
-    from commitgate.yaml. Raises ValueError on an unknown provider so a misconfig fails loud, 
+    from commitgate.yaml. Raises ValueError on an unknown provider so a misconfig fails loud,
     not by silently hitting the wrong endpoint."""
     if provider is None:
         from commitgate.config import load_config
