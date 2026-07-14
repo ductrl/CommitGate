@@ -2,14 +2,7 @@
 
 from __future__ import annotations
 
-# Prompt-level min_severity gate: sub-threshold findings are never generated, which is the
-# token/latency win. Gate by NAMED CATEGORY, not by asking the model to self-rate severity
 _SEVERITY_GATE = {
-    "medium": (
-        "Report all medium, high, and critical findings. Skip low-severity "
-        "hardening/info-disclosure issues (internal URLs/IPs, missing cookie flags, "
-        "verbose errors, debug mode, hypothetical-only risks). "
-    ),
     "high": (
         "Report all high and critical findings. Skip low- and medium-severity issues "
         "(internal URLs/IPs, missing cookie flags, verbose errors, debug mode, "

@@ -55,7 +55,7 @@ reporting:
   # Must be <= block_severity, so a blocking finding is never hidden
   # Options: low, medium, high, critical
   # Example: medium shows medium, high, and critical findings, but hides low findings.
-  # Raising this also speeds up the AI review (fewer findings to generate).
+  # Raising this to high speeds up the AI review significantly, but may hide some lower-severity findings.
   min_severity: medium
 
   # Control which optional fields are displayed for each finding.
@@ -95,7 +95,7 @@ def get_config_path() -> Path:
     """
     return Path(CONFIG_FILE_NAME)
 
-def create_default_config(overwrite: bool = True) -> Path:
+def create_default_config(overwrite: bool = False) -> Path:
     """
     Create a default commitgate.yaml file if one does not already exist.
 
