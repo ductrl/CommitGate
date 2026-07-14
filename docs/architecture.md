@@ -67,7 +67,7 @@ The former `commitgate.ai_reviewer` module was removed. `ai_review/__init__.py` 
 | Module | Responsibility |
 |--------|----------------|
 | `cli.py` | Typer commands: `scan`, `reset-config`, `install-hook`, `init`, and `version`. Owns runtime sequencing and exit codes. |
-| `config.py` | Loads, merges, validates, creates, and resets `commitgate.yaml`. |
+| `config.py` | Loads, merges, and validates `commitgate.yaml`; init creates the documented defaults without overwriting an existing file, while reset replaces it explicitly. |
 | `git_utils.py` | Git subprocess operations, staged/push-range collection, and hook installation. |
 | `gitleaks_runner.py` | Locates Gitleaks, scans the selected files, and maps its JSON report into finding dictionaries. |
 | `decision_engine.py` | Converts the merged findings into `allow`, `warn`, or `block` using `policy.block_severity`. |
@@ -75,7 +75,7 @@ The former `commitgate.ai_reviewer` module was removed. `ai_review/__init__.py` 
 | `splunk_logger.py` | Sends sanitized warn/block decision events to Splunk HEC when configured. |
 | `ai_review/__init__.py` | Public AI package API. Re-exports review, prompt, transport, and parsing entry points. |
 | `ai_review/reviewer.py` | AI configuration resolution, prompt/transport/parser orchestration, provider dispatch, and fail-safe warnings. |
-| `ai_review/prompt.py` | Evidence-gated security prompt, diff wrapper, output-field pruning, and prompt-level minimum-severity rules. |
+| `ai_review/prompt.py` | Evidence-gated security prompt, diff wrapper, output-field pruning, and severity policy.
 | `ai_review/transport.py` | Provider registry, OpenAI-compatible HTTP/SSE requests, local agent subprocess execution, and response-envelope unwrapping. |
 | `ai_review/findings.py` | JSON extraction/salvage, schema validation, staged-file filtering, text sanitization, and deterministic secret-location normalization. |
 
