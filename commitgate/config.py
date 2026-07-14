@@ -95,7 +95,7 @@ def get_config_path() -> Path:
     """
     return Path(CONFIG_FILE_NAME)
 
-def create_default_config(overwrite: bool = False) -> Path:
+def create_default_config(overwrite: bool = True) -> Path:
     """
     Create a default commitgate.yaml file if one does not already exist.
 
