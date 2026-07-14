@@ -116,9 +116,6 @@ def _resolve_report_fields() -> dict:
 
 
 def _resolve_min_severity() -> str:
-    """Read `reporting.min_severity` from commitgate.yaml so the prompt can tell the model to
-    skip sub-threshold findings (fewer output tokens = faster).
-    """
     try:
         from commitgate.config import load_config
         sev = load_config().get("reporting", {}).get("min_severity", "low")

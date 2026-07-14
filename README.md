@@ -243,7 +243,7 @@ reporting:
   # Must be <= block_severity, so a blocking finding is never hidden
   # Options: low, medium, high, critical
   # Example: medium shows medium, high, and critical findings, but hides low findings.
-  # Raising this also speeds up the AI review (fewer findings to generate).
+  # Raising this to high speeds up the AI review significantly, but may hide some lower-severity findings.
   min_severity: medium
 
   # Control which optional fields are displayed for each finding.

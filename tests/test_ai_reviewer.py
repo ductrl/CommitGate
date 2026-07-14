@@ -679,12 +679,20 @@ def test_review_cli_prompt_shaped_by_report_fields():
     assert '"file": str' in captured["prompt"]     # load-bearing field survives
 
 
-# --- prompt-level min_severity cut (the real latency lever: the model never generates them) ---
+# --- prompt-level min_severity policy -----------------------------------------
 
 def test_build_system_prompt_no_threshold_at_low():
     # "low" == report everything -> no severity gate (default prompt stays unchanged).
     p = ai_reviewer.build_system_prompt(min_severity="low")
     assert "Report all" not in p and "Skip low-severity" not in p
+
+
+def test_build_system_prompt_medium_matches_low():
+    # Medium findings must reach the deterministic display filter. Asking the model to
+    # suppress lows at this boundary caused it to suppress genuine mediums too (Bug A).
+    assert ai_reviewer.build_system_prompt(min_severity="medium") == (
+        ai_reviewer.build_system_prompt(min_severity="low")
+    )
 
 
 def test_build_system_prompt_adds_min_severity_threshold():
@@ -710,3 +718,23 @@ def test_review_threads_min_severity_into_prompt():
 
     assert "Report all high and critical findings" in captured["system"]
     assert "Skip low- and medium-severity issues" in captured["system"]
+
+
+def test_review_medium_uses_full_prompt():
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, **kwargs):
+        captured["system"] = json["messages"][0]["content"]
+        return FakeResponse("[]")
+
+    with patch.object(ai_reviewer.requests, "post", side_effect=fake_post):
+        review(
+            "some diff",
+            STAGED,
+            api_key="k",
+            provider="deepseek",
+            min_severity="medium",
+            report_fields={"category": True, "description": True, "suggestions": True},
+        )
+
+    assert captured["system"] == ai_reviewer.build_system_prompt(min_severity="low")
