@@ -29,8 +29,7 @@ cli.scan()
   6. merge findings and deduplicate exact normalized locations
   7. apply reporting.min_severity without hiding blockers
   8. decide allow / warn / block
-  9. log warn/block decisions to Splunk when configured
- 10. render the terminal report and return the Git-facing exit code
+  9. render the terminal report and return the Git-facing exit code
 ```
 
 `block` returns a non-zero exit code, so Git aborts the commit or push. `allow` and `warn` return zero. If pre-push metadata is unavailable, pre-push mode fails closed rather than silently scanning the wrong range.
@@ -45,7 +44,6 @@ commitgate/
 ├── gitleaks_runner.py
 ├── decision_engine.py
 ├── report_generator.py
-├── splunk_logger.py
 └── ai_review/
     ├── __init__.py
     ├── reviewer.py
@@ -72,7 +70,6 @@ The former `commitgate.ai_reviewer` module was removed. `ai_review/__init__.py` 
 | `gitleaks_runner.py` | Locates Gitleaks, scans the selected files, and maps its JSON report into finding dictionaries. |
 | `decision_engine.py` | Converts the merged findings into `allow`, `warn`, or `block` using `policy.block_severity`. |
 | `report_generator.py` | Exact-location deduplication, severity display filtering, and Rich-compatible finding formatting. |
-| `splunk_logger.py` | Sends sanitized warn/block decision events to Splunk HEC when configured. |
 | `ai_review/__init__.py` | Public AI package API. Re-exports review, prompt, transport, and parsing entry points. |
 | `ai_review/reviewer.py` | AI configuration resolution, prompt/transport/parser orchestration, provider dispatch, and fail-safe warnings. |
 | `ai_review/prompt.py` | Evidence-gated security prompt, diff wrapper, output-field pruning, and severity policy.
@@ -212,8 +209,6 @@ The decision engine does not depend on scanner-specific classes.
 - Agent CLI providers use local login sessions, but their configured vendor still receives the diff; they are not local/offline models.
 - Claude is invoked without tools. Codex and Antigravity may retain read access to workspace files within their configured restrictions.
 - AI responses are untrusted until `findings.py` validates them.
-- Splunk receives sanitized finding data with the `secret` field removed.
-- No-findings/allow scans currently exit before Splunk logging; configured audit events cover warn/block decisions.
 
 ### Current scanner-coordinate limitation
 

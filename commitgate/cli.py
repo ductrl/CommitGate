@@ -8,7 +8,6 @@ from commitgate.report_generator import format_finding, severity_color, remove_d
 from commitgate.ai_review import review
 from commitgate.config import create_default_config, load_config
 from commitgate.decision_engine import decide
-from commitgate.splunk_logger import log_decision
 
 app = typer.Typer()
 
@@ -85,7 +84,6 @@ def scan(
         raise typer.Exit(code=0)
 
     decision = decide(all_findings)
-    log_decision(decision)
     action = decision["action"]
 
     color = "yellow" if action == "warn" else "red"

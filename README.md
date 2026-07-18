@@ -6,7 +6,7 @@ An AI-powered security gate for Git. On every `git commit` or every `git push`.
 
 CommitGate scans your changes and **blocks them** before secrets or risky code ever reach your history.
 
-[How it works](#how-it-works) · [Providers](#providers) · [Setup](#setup) · [How to use](#how-to-use) · [Configuration](#configuration) · [Data Privacy](#data-privacy) · [Splunk Logging](#splunk-audit-logging-optional)
+[How it works](#how-it-works) · [Providers](#providers) · [Setup](#setup) · [How to use](#how-to-use) · [Configuration](#configuration) · [Data Privacy](#data-privacy)
 
 </div>
 
@@ -272,75 +272,6 @@ When the AI Reviewer is enabled, CommitGate sends the **selected change diff to 
 **Do not** use the AI Reviewer on confidential or proprietary code without your organization's authorization. Set `ai.enabled: false` to run Gitleaks only. 
 
 **Fully local LLM support is on the roadmap.**
-
----
-
-## Splunk Audit Logging (optional)
-
-CommitGate can send a sanitized audit event to Splunk when findings produce a `warn` or `block` decision.
-
-### 1. Create a Splunk account
-
-Sign up at `splunk.com`. Start a **Splunk Cloud free trial** from your account dashboard.
-
-### 2. Enable HTTP Event Collector (HEC)
-
-In your Splunk UI:
-
-1. **Settings** → **Data Inputs** → **HTTP Event Collector**
-2. Click **Global Settings** → set **All Tokens** to **Enabled** → **Save**
-
-### 3. Create a HEC token
-
-1. Still on the HTTP Event Collector page → **New Token**
-2. **Name:** `commitgate-audit`
-3. Click **Next** → **Source type:** type `commitgate:audit` and select **New**
-4. **Index:** `main` → **Review** → **Submit**
-5. Copy the token shown on the confirmation screen
-
-### 4. Add to your `.env`
-
-```env
-SPLUNK_HEC_TOKEN=your-token-here
-SPLUNK_HEC_URL=https://prd-p-yourinstance.splunkcloud.com:8088/services/collector/event
-SPLUNK_VERIFY_SSL=false
-```
-
-> **Why `SPLUNK_VERIFY_SSL=false`?** Splunk Cloud free trial issues certificates missing the Authority Key Identifier extension required by Python 3.10+, making SSL verification impossible on the free plan. Paid Splunk accounts use properly signed certificates and do not need this setting.
-
-### 5. Verify the connection
-
-Stage any file and run a manual scan:
-
-```bash
-git add <any-staged-file>
-commitgate scan
-git restore --staged <any-staged-file>
-```
-
-If the audit event reaches Splunk you'll see no yellow "Splunk audit log failed" warning in the output.
-
-### 6. View events in Splunk
-
-**Search & Reporting** → run:
-
-```
-sourcetype="commitgate:audit"
-```
-
-Each logged `warn` or `block` decision appears as one event with `action`, `reason`, `findings_count`, and the sanitized findings list.
-
-### Splunk dashboard
-
-Build a **CommitGate Security Gate** dashboard with these searches:
-
-| Panel | Type | Search |
-|-------|------|--------|
-| Decisions over time | Line chart | `sourcetype="commitgate:audit" action!="allow" \| timechart count by action` |
-| Blocks today | Single value | `sourcetype="commitgate:audit" action=block \| stats count as Blocked` |
-| Top triggered categories | Bar chart | `sourcetype="commitgate:audit" \| stats count by findings{}.category \| sort -count` |
-| Findings by severity | Pie chart | `sourcetype="commitgate:audit" \| stats count by findings{}.severity` |
-| Recent blocked commits | Table | `sourcetype="commitgate:audit" \| table _time reason findings_count \| sort -_time` |
 
 ---
 

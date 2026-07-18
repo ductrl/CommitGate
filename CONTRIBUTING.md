@@ -41,7 +41,6 @@ Examples:
 ```bash
 git checkout -b feature/ai-reviewer
 git checkout -b feature/gitleaks-runner
-git checkout -b feature/splunk-logging
 ```
 
 ---
@@ -89,7 +88,6 @@ commitgate/
 │   └── findings.py
 ├── decision_engine.py   
 ├── report_generator.py   
-├── splunk_logger.py   
 ├── config.py  
 
 See `docs/architecture.md` for details.
